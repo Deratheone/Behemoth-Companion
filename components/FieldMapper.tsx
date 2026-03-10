@@ -35,12 +35,22 @@ export default function FieldMapper() {
   const [log, setLog] = useState<LogEntry[]>([]);
   const [fieldName, setFieldName] = useState("Field A-01");
   const [colFull, setColFull] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
 
   const addLog = useCallback((msg: string, type: LogType = "info") => {
     const time = new Date().toLocaleTimeString("en-IN", { hour12: false });
     setLog(prev => [...prev.slice(-49), { msg, type, time }]);
+  }, []);
+
+  // Mobile detection
+  useEffect(() => {
+    const mql = window.matchMedia("(max-width: 640px)");
+    setIsMobile(mql.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
   }, []);
 
   const plantCrop = useCallback(() => {
@@ -147,6 +157,8 @@ export default function FieldMapper() {
   const goodPct = stats.total > 0 ? Math.round((stats.good / stats.total) * 100) : 0;
   const filledCells = stats.total;
   const totalCells = ROWS * COLS;
+  const CELL = isMobile ? 24 : 32;
+  const LABEL_W = isMobile ? 20 : 24;
 
   const statusColor: Record<WsStatus, string> = {
     connected: "#22c55e",
@@ -166,13 +178,13 @@ export default function FieldMapper() {
     <div style={{
       color: "#e2e8d5",
       fontFamily: "'Courier New', 'Lucida Console', monospace",
-      padding: "16px",
+      padding: isMobile ? "10px" : "16px",
       display: "flex",
       flexDirection: "column",
       gap: "12px",
     }}>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #2d4a33", paddingBottom: "10px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #2d4a33", paddingBottom: "10px", flexWrap: "wrap", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <div style={{ width: 36, height: 36, border: "2px solid #4ade80", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 2, padding: 4 }}>
             {[...Array(9)].map((_, i) => (
@@ -184,7 +196,7 @@ export default function FieldMapper() {
             <div style={{ fontSize: 10, color: "#9ca3af", letterSpacing: 3 }}>AGRICULTURAL GRID SYSTEM</div>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: isMobile ? "12px" : "24px" }}>
           <div style={{ textAlign: "right" }}>
             <div style={{ fontSize: 10, color: "#9ca3af", letterSpacing: 2 }}>FIELD ID</div>
             <input
@@ -204,12 +216,12 @@ export default function FieldMapper() {
       <div style={{ display: "flex", gap: "12px", flex: 1, flexWrap: "wrap" }}>
 
         {/* Left panel: grid */}
-        <div style={{ flex: "1 1 auto", display: "flex", flexDirection: "column", gap: 8, minWidth: 300 }}>
+        <div style={{ flex: "1 1 auto", display: "flex", flexDirection: "column", gap: 8, minWidth: 0, overflowX: isMobile ? "auto" : undefined }}>
           {/* Grid header labels */}
-          <div style={{ display: "flex", alignItems: "center", gap: 4, paddingLeft: 28 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, paddingLeft: LABEL_W + 4 }}>
             {Array.from({ length: COLS }, (_, c) => (
               <div key={c} style={{
-                width: 32, height: 16, textAlign: "center", fontSize: 9, color: c === currentCol ? "#4ade80" : "#6b7280",
+                width: CELL, height: 16, textAlign: "center", fontSize: 9, color: c === currentCol ? "#4ade80" : "#6b7280",
                 fontWeight: c === currentCol ? "bold" : "normal",
                 borderBottom: c === currentCol ? "2px solid #4ade80" : "2px solid transparent",
               }}>{c + 1}</div>
@@ -220,7 +232,7 @@ export default function FieldMapper() {
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {Array.from({ length: ROWS }, (_, r) => (
               <div key={r} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <div style={{ width: 24, textAlign: "right", fontSize: 9, color: "#6b7280", marginRight: 4 }}>
+                <div style={{ width: LABEL_W, textAlign: "right", fontSize: 9, color: "#6b7280", marginRight: 4 }}>
                   {ROWS - r}
                 </div>
                 {Array.from({ length: COLS }, (_, c) => {
@@ -229,8 +241,8 @@ export default function FieldMapper() {
                   const isActiveCol = c === currentCol;
                   return (
                     <div key={c} style={{
-                      width: 32,
-                      height: 32,
+                      width: CELL,
+                      height: CELL,
                       border: isCurrent
                         ? "2px solid #facc15"
                         : isActiveCol
@@ -265,7 +277,7 @@ export default function FieldMapper() {
           </div>
 
           {/* Direction indicator */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 4, paddingLeft: 28 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 4, paddingLeft: LABEL_W + 4 }}>
             <div style={{ fontSize: 10, color: "#9ca3af", letterSpacing: 1 }}>
               COL {currentCol + 1} · {direction === "up" ? "↑ S→N" : "↓ N→S"} · ROW {ROWS - currentRow}
             </div>
@@ -274,7 +286,7 @@ export default function FieldMapper() {
         </div>
 
         {/* Right panel */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 220, maxWidth: 280 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: isMobile ? 0 : 220, maxWidth: isMobile ? "100%" : 280, width: isMobile ? "100%" : undefined }}>
 
           {/* Stats */}
           <div style={{ border: "1px solid #2d4a33", borderRadius: 6, padding: "12px 14px", background: "#0f1f14" }}>

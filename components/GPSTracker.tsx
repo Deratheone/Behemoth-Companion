@@ -27,6 +27,7 @@ export default function GPSTracker() {
   const [trail, setTrail] = useState<TrailEntry[]>([]);
   const [clock, setClock] = useState("--:--:--");
   const [mapsLoaded, setMapsLoaded] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
@@ -35,6 +36,15 @@ export default function GPSTracker() {
   const polylineRef = useRef<google.maps.Polyline | null>(null);
   const trailLogRef = useRef<HTMLDivElement>(null);
   const firstFixRef = useRef(true);
+
+  // Mobile detection
+  useEffect(() => {
+    const mql = window.matchMedia("(max-width: 768px)");
+    setIsMobile(mql.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, []);
 
   // Clock
   useEffect(() => {
@@ -181,17 +191,21 @@ export default function GPSTracker() {
         color: "#c8dff0",
         height: "calc(100vh - 52px)",
         display: "grid",
-        gridTemplateColumns: "280px 1fr",
+        gridTemplateColumns: isMobile ? "1fr" : "280px 1fr",
+        gridTemplateRows: isMobile ? "1fr auto" : "1fr",
         overflow: "hidden",
       }}>
 
         {/* SIDEBAR */}
         <aside style={{
           background: "#0b1220",
-          borderRight: "1px solid #1a2d4a",
+          borderRight: isMobile ? "none" : "1px solid #1a2d4a",
+          borderTop: isMobile ? "1px solid #1a2d4a" : "none",
           padding: "14px 12px",
           display: "flex", flexDirection: "column", gap: 10,
           overflowY: "auto",
+          order: isMobile ? 2 : 0,
+          maxHeight: isMobile ? "50vh" : undefined,
         }}>
           {/* Section: Position */}
           <SectionLabel>Position</SectionLabel>
@@ -285,12 +299,12 @@ export default function GPSTracker() {
         </aside>
 
         {/* MAP */}
-        <div style={{ position: "relative", width: "100%", height: "100%" }}>
+        <div style={{ position: "relative", width: "100%", height: "100%", order: isMobile ? 1 : 0, minHeight: isMobile ? "50vh" : undefined }}>
           {/* Header bar inside map area */}
           <div style={{
             position: "absolute", top: 0, left: 0, right: 0, zIndex: 10,
             background: "#0b1220", borderBottom: "1px solid #1a2d4a",
-            display: "flex", alignItems: "center", padding: "0 16px",
+            display: isMobile ? "none" : "flex", alignItems: "center", padding: "0 16px",
             height: 44, gap: 14,
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -340,7 +354,7 @@ export default function GPSTracker() {
           </div>
 
           {/* Map container */}
-          <div ref={mapRef} style={{ width: "100%", height: "100%", paddingTop: 44 }}>
+          <div ref={mapRef} style={{ width: "100%", height: "100%", paddingTop: isMobile ? 0 : 44 }}>
             {!mapsLoaded && (
               <div style={{
                 width: "100%", height: "100%",
@@ -369,10 +383,10 @@ export default function GPSTracker() {
 
           {/* Coords overlay */}
           <div style={{
-            position: "absolute", bottom: 28, left: "50%", transform: "translateX(-50%)",
+            position: "absolute", bottom: isMobile ? 12 : 28, left: "50%", transform: "translateX(-50%)",
             background: "rgba(6,10,16,0.88)", border: "1px solid #1a2d4a", borderRadius: 6,
-            padding: "8px 18px",
-            fontFamily: "'Courier New', monospace", fontSize: "0.75rem", color: "#00d4ff",
+            padding: isMobile ? "6px 12px" : "8px 18px",
+            fontFamily: "'Courier New', monospace", fontSize: isMobile ? "0.65rem" : "0.75rem", color: "#00d4ff",
             letterSpacing: "0.08em", zIndex: 5, pointerEvents: "none",
             backdropFilter: "blur(6px)", whiteSpace: "nowrap",
           }}>

@@ -1,0 +1,5 @@
+<!-- Simple SVG icon placeholder - 192x192 -->
+<svg width="192" height="192" xmlns="http://www.w3.org/2000/svg">
+  <rect width="192" height="192" fill="#16a34a"/>
+  <text x="96" y="115" font-size="80" text-anchor="middle" fill="white">🌱</text>
+</svg>

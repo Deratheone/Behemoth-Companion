@@ -1,6 +1,6 @@
 # 🌿 Behemoth Companion
 
-Companion web app for **Behemoth**, an automatic vegetable transplanter built by **Team Behemoth** at **CUSAT** for **TIFAN 2026**.
+Companion web app for **Behemoth**, an automatic vegetable transplanter built by **Team Behemoth** at **CUSAT**.
 
 This PWA provides field operators with AI chat, real-time sapling health detection, field mapping, GPS tracking, and transplanter hire, all accessible from a phone or tablet alongside the transplanter.
 
@@ -11,7 +11,7 @@ This PWA provides field operators with AI chat, real-time sapling health detecti
 
 ## About
 
-**TIFAN 2026** (Technology Intervention for Farm Automation and Nutrition) is a national-level competition organised by **SAE India**. Team Behemoth from Cochin University of Science and Technology (CUSAT) designed an automatic vegetable transplanter, and this companion app serves as its digital interface, giving operators tools for monitoring crop health, mapping fields, tracking the machine's position, and managing rental logistics.
+Team Behemoth from Cochin University of Science and Technology (CUSAT) designed an automatic vegetable transplanter, and this companion app serves as its digital interface, giving operators tools for monitoring crop health, mapping fields, tracking the machine's position, and managing rental logistics.
 
 ## Features
 
@@ -112,3 +112,4 @@ npm start
 ## License
 
 MIT
+

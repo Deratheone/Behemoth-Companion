@@ -1,11 +1,14 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
-import dynamic from 'next/dynamic'
-
-const GPSTracker = dynamic(() => import('../components/GPSTracker'), { ssr: false })
+import { useState, useEffect, type ComponentType } from 'react'
 
 export default function Position() {
   const router = useRouter()
+  const [GPSTracker, setGPSTracker] = useState<ComponentType | null>(null)
+
+  useEffect(() => {
+    import('../components/GPSTracker').then((mod) => setGPSTracker(() => mod.default))
+  }, [])
 
   return (
     <>
@@ -35,7 +38,7 @@ export default function Position() {
         </div>
 
         {/* GPS Tracker */}
-        <GPSTracker />
+        {GPSTracker ? <GPSTracker /> : null}
       </main>
     </>
   )

@@ -7,57 +7,76 @@ interface BeforeInstallPromptEvent extends Event {
 
 export default function InstallPWA() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
-  const [showInstallButton, setShowInstallButton] = useState(false)
+  const [installed, setInstalled] = useState(false)
+  const [showTip, setShowTip] = useState(false)
 
   useEffect(() => {
     const handler = (e: Event) => {
       e.preventDefault()
       setDeferredPrompt(e as BeforeInstallPromptEvent)
-      setShowInstallButton(true)
     }
 
     window.addEventListener('beforeinstallprompt', handler)
 
-    // Check if already installed
     if (window.matchMedia('(display-mode: standalone)').matches) {
-      setShowInstallButton(false)
+      setInstalled(true)
     }
 
     return () => window.removeEventListener('beforeinstallprompt', handler)
   }, [])
 
   const handleInstallClick = async () => {
-    if (!deferredPrompt) return
-
-    deferredPrompt.prompt()
-    const { outcome } = await deferredPrompt.userChoice
-
-    if (outcome === 'accepted') {
-      console.log('User accepted the install prompt')
+    if (deferredPrompt) {
+      deferredPrompt.prompt()
+      const { outcome } = await deferredPrompt.userChoice
+      if (outcome === 'accepted') {
+        setInstalled(true)
+      }
+      setDeferredPrompt(null)
+    } else {
+      setShowTip(true)
     }
-
-    setDeferredPrompt(null)
-    setShowInstallButton(false)
   }
 
-  if (!showInstallButton) return null
+  if (installed) return null
 
   return (
-    <button
-      onClick={handleInstallClick}
-      className="flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm text-white transition-colors hover:bg-green-500"
-      aria-label="Install Behemoth Companion"
-    >
-      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path 
-          strokeLinecap="round" 
-          strokeLinejoin="round" 
-          strokeWidth={2} 
-          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" 
-        />
-      </svg>
-      <span className="hidden sm:inline">Install App</span>
-      <span className="sm:hidden">Install</span>
-    </button>
+    <>
+      <button
+        onClick={handleInstallClick}
+        className="flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm text-white transition-colors hover:bg-green-500 shadow-lg"
+        aria-label="Install Behemoth Companion"
+      >
+        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+          />
+        </svg>
+        <span className="hidden sm:inline">Install App</span>
+        <span className="sm:hidden">Install</span>
+      </button>
+
+      {showTip && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowTip(false)}>
+          <div className="bg-white rounded-2xl p-6 max-w-sm shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-start mb-3">
+              <h3 className="text-lg font-bold text-gray-800">Install as App</h3>
+              <button onClick={() => setShowTip(false)} className="text-gray-400 hover:text-gray-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="text-sm text-gray-600 space-y-2">
+              <p><span className="font-semibold text-gray-700">Chrome / Edge:</span> Menu &rarr; &quot;Install app&quot;</p>
+              <p><span className="font-semibold text-gray-700">Safari (iOS):</span> Share &rarr; &quot;Add to Home Screen&quot;</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }

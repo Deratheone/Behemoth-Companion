@@ -79,7 +79,9 @@ export default function Hire() {
               <span className="text-sm font-medium">Home</span>
             </button>
             <div className="flex items-center gap-2">
-              <img src="/logo.png" alt="Behemoth" className="w-8 h-8 object-contain" />
+              <div className="flex h-8 w-8 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full bg-white/10 overflow-hidden">
+                <img src="/logo.png" alt="Behemoth Companion" className="h-full w-full scale-150 translate-y-0.5 object-cover" />
+              </div>
               <h1 className="text-white font-bold text-lg">Hire Transplanter</h1>
             </div>
             <div className="w-16" />

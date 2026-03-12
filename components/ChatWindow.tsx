@@ -113,11 +113,11 @@ export default function ChatWindow({ shareLocation, shareWeather, location, weat
   }
 
   return (
-    <div className="relative flex h-full w-full flex-col bg-transparent">
-      {/* Messages Container - with bottom padding for input bar */}
+    <div className="flex h-full w-full flex-col bg-transparent">
+      {/* Messages Container */}
       <div 
         ref={messagesContainerRef}
-        className="absolute inset-0 overflow-y-auto touch-pan-y overscroll-contain bg-transparent pb-24 sm:pb-28"
+        className="flex-1 overflow-y-auto touch-pan-y overscroll-contain bg-transparent"
       >
         <div className="mx-auto flex min-h-full min-w-0 max-w-4xl flex-col gap-4 sm:gap-6 px-3 sm:px-4 py-4 sm:py-6">
           {messages.map((message) => (
@@ -191,8 +191,8 @@ export default function ChatWindow({ shareLocation, shareWeather, location, weat
         </div>
       </div>
 
-      {/* Fixed Input Bar at Bottom */}
-      <div className="absolute bottom-0 left-0 right-0 shrink-0 border-t border-white/10 bg-black/40 backdrop-blur-xl px-3 sm:px-4 py-3 sm:py-4 safe-area-inset-bottom">
+      {/* Input Bar - always at bottom */}
+      <div className="shrink-0 border-t border-white/10 bg-black/40 backdrop-blur-xl px-3 sm:px-4 py-3 sm:py-4 safe-area-inset-bottom">
         <form onSubmit={handleSubmit} className="mx-auto flex w-full max-w-4xl gap-2">
           <div className="relative flex-1">
             <textarea

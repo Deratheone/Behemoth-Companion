@@ -68,7 +68,7 @@ export default function Chat() {
         <title>Chat - Behemoth Companion</title>
       </Head>
 
-      <main className="h-screen bg-black flex flex-col relative overflow-hidden">
+      <main className="h-dvh bg-black flex flex-col relative overflow-hidden">
         {/* FloatingLines Background */}
         <div className="fixed inset-0 z-0">
           <FloatingLines 

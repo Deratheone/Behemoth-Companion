@@ -2,7 +2,7 @@
 
 Companion web app for **Behemoth**, an automatic vegetable transplanter built by **Team Behemoth** at **Cochin University of Science and Technology(CUSAT) **.
 
-This PWA provides field operators with AI chat, real-time sapling health detection, field mapping, GPS tracking, and transplanter hire, all accessible from a phone or tablet alongside the transplanter.
+This PWA provides field operators with AI chatbot, real-time sapling health detection, field mapping, GPS tracking, and transplanter hire, all accessible from a phone or tablet alongside the transplanter.
 
 ![Next.js](https://img.shields.io/badge/Next.js-14.2-black?logo=next.js)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue?logo=typescript)
@@ -112,6 +112,7 @@ npm start
 ## License
 
 MIT
+
 
 
 

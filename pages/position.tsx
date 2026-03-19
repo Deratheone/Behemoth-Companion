@@ -1,10 +1,14 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useState, useEffect, type ComponentType } from 'react'
+import { useAuthProtection } from '../hooks/useAuthProtection'
 
 export default function Position() {
   const router = useRouter()
   const [GPSTracker, setGPSTracker] = useState<ComponentType | null>(null)
+
+  // Protect route - redirect if not authenticated
+  useAuthProtection()
 
   useEffect(() => {
     import('../components/GPSTracker').then((mod) => setGPSTracker(() => mod.default))

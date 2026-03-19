@@ -1,5 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Script from "next/script";
+import { getESP32IP, fetchWithTimeout } from "../utils/esp32";
+import { GPS_POLL_INTERVAL_MS, GPS_REQUEST_TIMEOUT_MS, GPS_TRAIL_HISTORY_LIMIT } from "../utils/constants";
 
 interface GPSData {
   lat: number | null;
@@ -28,6 +30,7 @@ export default function GPSTracker() {
   const [clock, setClock] = useState("--:--:--");
   const [mapsLoaded, setMapsLoaded] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [esp32IP, setEsp32IP] = useState<string | null>(null);
 
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
@@ -36,6 +39,12 @@ export default function GPSTracker() {
   const polylineRef = useRef<google.maps.Polyline | null>(null);
   const trailLogRef = useRef<HTMLDivElement>(null);
   const firstFixRef = useRef(true);
+  const pendingRequestRef = useRef<AbortController | null>(null);
+
+  // Load ESP32 IP once on mount
+  useEffect(() => {
+    setEsp32IP(getESP32IP())
+  }, [])
 
   // Mobile detection
   useEffect(() => {
@@ -110,64 +119,109 @@ export default function GPSTracker() {
     if (mapsLoaded) initMap();
   }, [mapsLoaded, initMap]);
 
-  // Poll GPS data
+  // Poll GPS data from ESP32
   useEffect(() => {
     const fetchLocation = async () => {
+      // Check if ESP32 is configured
+      if (!esp32IP) {
+        setServerStatus("error")
+        setGpsStatus("error")
+        return
+      }
+
+      // Cancel pending request to avoid overlapping
+      if (pendingRequestRef.current) {
+        pendingRequestRef.current.abort()
+      }
+
+      const controller = new AbortController()
+      pendingRequestRef.current = controller
+
       try {
-        const res = await fetch("/api/gps");
-        const data: GPSData = await res.json();
+        // Use fetchWithTimeout utility
+        const res = await fetchWithTimeout(`http://${esp32IP}/data`, GPS_REQUEST_TIMEOUT_MS)
 
-        setServerStatus("ok");
-
-        if (!data.lat || !data.lng) {
-          setGpsStatus("waiting");
-          return;
+        if (!res.ok) {
+          throw new Error(`ESP32 returned error: ${res.status}`)
         }
 
-        setGpsStatus("ok");
-        setGpsData(data);
+        const data = await res.json()
 
-        const pos = { lat: data.lat, lng: data.lng };
+        // Extract location from combined response
+        const { location, timestamp } = data
 
-        if (markerRef.current) markerRef.current.setPosition(pos);
-        if (circleRef.current) circleRef.current.setCenter(pos);
+        setServerStatus("ok")
+
+        if (!location.lat || !location.lng) {
+          setGpsStatus("waiting")
+          return
+        }
+
+        setGpsStatus("ok")
+        setGpsData({
+          lat: location.lat,
+          lng: location.lng,
+          speed: location.speed || 0,
+          altitude: location.altitude || 0,
+          satellites: location.satellites || 0,
+          timestamp: timestamp ? new Date(timestamp).toISOString() : new Date().toISOString(),
+        })
+
+        const pos = { lat: location.lat, lng: location.lng }
+
+        if (markerRef.current) markerRef.current.setPosition(pos)
+        if (circleRef.current) circleRef.current.setCenter(pos)
 
         if (mapInstanceRef.current) {
           if (firstFixRef.current) {
-            mapInstanceRef.current.panTo(pos);
-            mapInstanceRef.current.setZoom(16);
-            firstFixRef.current = false;
+            mapInstanceRef.current.panTo(pos)
+            mapInstanceRef.current.setZoom(16)
+            firstFixRef.current = false
           } else {
-            mapInstanceRef.current.panTo(pos);
+            mapInstanceRef.current.panTo(pos)
           }
         }
 
         if (polylineRef.current) {
-          polylineRef.current.getPath().push(new google.maps.LatLng(pos.lat, pos.lng));
+          polylineRef.current.getPath().push(new google.maps.LatLng(pos.lat, pos.lng))
         }
 
-        const time = new Date().toLocaleTimeString("en-GB", { hour12: false });
+        const time = new Date().toLocaleTimeString("en-GB", { hour12: false })
         setTrail(prev => {
-          const next = [...prev, { time, coords: `${data.lat!.toFixed(5)}, ${data.lng!.toFixed(5)}` }];
-          return next.slice(-40);
-        });
-      } catch {
-        setServerStatus("error");
-        setGpsStatus("error");
+          const next = [...prev, { time, coords: `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}` }]
+          return next.slice(-GPS_TRAIL_HISTORY_LIMIT)
+        })
+      } catch (error) {
+        // Only update status if not aborted
+        if (!(error instanceof Error && error.name === 'AbortError')) {
+          setServerStatus("error")
+          setGpsStatus("error")
+          console.error('GPS fetch error:', error)
+        }
       }
-    };
+    }
 
-    fetchLocation();
-    const id = setInterval(fetchLocation, 3000);
-    return () => clearInterval(id);
-  }, []);
+    if (!esp32IP) return
+
+    fetchLocation()
+    const id = setInterval(fetchLocation, GPS_POLL_INTERVAL_MS)
+    return () => {
+      clearInterval(id)
+      if (pendingRequestRef.current) {
+        pendingRequestRef.current.abort()
+      }
+    }
+  }, [esp32IP])
 
   useEffect(() => {
     if (trailLogRef.current) trailLogRef.current.scrollTop = trailLogRef.current.scrollHeight;
   }, [trail]);
 
   // Satellite icons
-  const satIcons = Array.from({ length: 12 }, (_, i) => i < gpsData.satellites);
+  const satIcons = useMemo(() =>
+    Array.from({ length: 12 }, (_, i) => i < gpsData.satellites),
+    [gpsData.satellites]
+  );
 
   const statusDotStyle = (status: "ok" | "waiting" | "error"): React.CSSProperties => ({
     width: 8, height: 8, borderRadius: "50%", flexShrink: 0,

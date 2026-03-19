@@ -2,9 +2,13 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import FloatingLines from '../components/FloatingLines'
 import FieldMapper from '../components/FieldMapper'
+import { useAuthProtection } from '../hooks/useAuthProtection'
 
 export default function FieldMap() {
   const router = useRouter()
+
+  // Protect route - redirect if not authenticated
+  useAuthProtection()
 
   return (
     <>

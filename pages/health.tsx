@@ -4,6 +4,7 @@ import { useState } from 'react'
 import dynamic from 'next/dynamic'
 import FloatingLines from '../components/FloatingLines'
 import type { LoadStage } from '../components/SaplingDetector'
+import { useAuthProtection } from '../hooks/useAuthProtection'
 
 const SaplingDetector = dynamic(() => import('../components/SaplingDetector'), {
   ssr: false,
@@ -12,6 +13,9 @@ const SaplingDetector = dynamic(() => import('../components/SaplingDetector'), {
 export default function Health() {
   const router = useRouter()
   const [loadStage, setLoadStage] = useState<LoadStage>('tf')
+
+  // Protect route - redirect if not authenticated
+  useAuthProtection()
 
   const isLoading = loadStage !== 'ready' && loadStage !== 'error'
 

@@ -2,7 +2,7 @@
 
 Companion web app for **Behemoth**, an automatic vegetable transplanter built by **Team Behemoth** at **Cochin University of Science and Technology(CUSAT) **.
 
-This PWA provides field operators with AI chatbot, real-time sapling health detection, field mapping, GPS tracking, and transplanter hire, all accessible from a phone or tablet alongside the transplanter.
+This PWA provides field operators with AI chatbot, real-time sapling health detection, field mapping, GPS tracking, emergency stop controls, and transplanter hire, all accessible from a phone or tablet alongside the transplanter.
 
 ![Next.js](https://img.shields.io/badge/Next.js-14.2-black?logo=next.js)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue?logo=typescript)
@@ -23,6 +23,7 @@ Team Behemoth from Cochin University of Science and Technology (CUSAT) designed 
 | `/position` | **Position** · Live GPS tracking on Google Maps | Google Maps API + Geolocation |
 | `/hire` | **Hire** · Transplanter rental booking form | React form with pricing calculator |
 | `/offline` | **Offline** · Fallback page when network is unavailable | Service Worker (next-pwa) |
+| **Emergency Stop** | **Safety Control** · Remote GPIO control of transplanter LED | ESP32 POST /gpio endpoint integration |
 
 ## Tech Stack
 
@@ -82,6 +83,7 @@ npm start
 ```
 ├── components/
 │   ├── ChatWindow.tsx      # AI chat interface
+│   ├── EmergencyStop.tsx   # ESP32 GPIO control button (top-right)
 │   ├── FieldMapper.tsx     # Interactive field grid
 │   ├── FloatingLines.tsx   # Three.js background effect
 │   ├── GPSTracker.tsx      # Google Maps GPS component

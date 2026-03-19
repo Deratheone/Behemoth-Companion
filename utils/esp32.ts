@@ -121,6 +121,41 @@ export async function testESP32Connection(): Promise<boolean> {
   }
 }
 
+// GPIO Control
+
+export async function controlGPIO(pin: number, state: boolean): Promise<void> {
+  const url = `http://${ESP32_IP}/gpio`
+  const payload = {
+    pin,
+    state: state ? 1 : 0
+  }
+
+  try {
+    const response = await fetchWithTimeout(url, 3000)
+
+    if (!response.ok) {
+      throw new Error(`ESP32 GPIO control failed: ${response.status}`)
+    }
+
+    const result = await response.json()
+
+    // Validate response
+    if (result.success !== true) {
+      throw new Error(result.error || 'GPIO control failed')
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error
+    }
+    throw new Error('Failed to control GPIO pin')
+  }
+}
+
+// Emergency Stop (GPIO2 - built-in LED)
+export async function emergencyStop(): Promise<void> {
+  return controlGPIO(2, true) // Turn on GPIO2 (built-in LED)
+}
+
 // Error Classification
 
 export function classifyESP32Error(error: Error): {

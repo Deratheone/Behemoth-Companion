@@ -1,5 +1,6 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
+import EmergencyStop from '../components/EmergencyStop'
 import FloatingLines from '../components/FloatingLines'
 import FieldMapper from '../components/FieldMapper'
 import { useAuthProtection } from '../hooks/useAuthProtection'
@@ -44,7 +45,9 @@ export default function FieldMap() {
               </div>
               <h1 className="text-white font-bold text-lg">Field Map</h1>
             </div>
-            <div className="w-16" />
+            <div className="flex items-center gap-2">
+              <EmergencyStop />
+            </div>
           </div>
 
           {/* ESP Connection Status */}

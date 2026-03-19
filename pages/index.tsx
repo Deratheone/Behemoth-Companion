@@ -6,6 +6,7 @@ import Plasma from '../components/Plasma'
 import InstallPWA from '../components/InstallPWA'
 import AuthModal from '../components/AuthModal'
 import UserBadge from '../components/UserBadge'
+import EmergencyStop from '../components/EmergencyStop'
 import ESP32ConnectionModal from '../components/ESP32ConnectionModal'
 import { User, getUser, removeUser } from '../utils/auth'
 import { useESP32Connection } from '../hooks/useESP32Connection'
@@ -81,6 +82,7 @@ export default function Home() {
                   <span className="sm:hidden">✓</span>
                 </div>
               )}
+              <EmergencyStop />
               <UserBadge user={user} onLogout={handleLogout} />
             </>
           ) : (

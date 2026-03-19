@@ -1,6 +1,7 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useState, useEffect, type ComponentType } from 'react'
+import EmergencyStop from '../components/EmergencyStop'
 import { useAuthProtection } from '../hooks/useAuthProtection'
 import { useESP32Connection } from '../hooks/useESP32Connection'
 
@@ -42,7 +43,9 @@ export default function Position() {
             </div>
             <h1 className="text-white font-bold text-lg">Position Data</h1>
           </div>
-          <div className="w-16" />
+          <div className="flex items-center gap-2">
+            <EmergencyStop />
+          </div>
         </div>
 
         {/* ESP Connection Status */}

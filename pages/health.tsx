@@ -1,6 +1,7 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useState } from 'react'
+import EmergencyStop from '../components/EmergencyStop'
 import FloatingLines from '../components/FloatingLines'
 import type { LoadStage } from '../components/SaplingDetector'
 import SaplingDetector from '../components/SaplingDetector'
@@ -49,7 +50,9 @@ export default function Health() {
               </div>
               <h1 className="text-white font-bold text-lg">Health Bot</h1>
             </div>
-            <div className="w-16" /> {/* Spacer for centering */}
+            <div className="flex items-center gap-2">
+              <EmergencyStop />
+            </div>
           </div>
 
           {/* ESP Connection Status */}

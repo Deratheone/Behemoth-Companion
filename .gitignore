@@ -42,6 +42,3 @@ next-env.d.ts
 /public/sw.js.map
 /public/workbox-*.js.map
 /public/worker-*.js.map
-
-# local docs
-/documentation and guides/

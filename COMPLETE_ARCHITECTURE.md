@@ -39,8 +39,9 @@
 │ • Dashboard              │   Every 3 seconds     │ • WiFi Hotspot      │
 │ • GPS Tracking           │                       │ • Plant Detection   │
 │ • Field Mapping          │   JSON Response       │ • Field Grid        │
-│ • Health Detection       │                       │ • HTTP Server       │
-│ • AI Chat                │                       │                     │
+│ • Health Detection       │   + GPIO Control      │ • HTTP Server       │
+│ • AI Chat                │                       │ • Emergency LED     │
+│ • Emergency Stop         │                       │ • GPIO Control      │
 └──────────────────────────┘                       └─────────────────────┘
             ↓                                                ↑
     ┌──────────────┐                                  ┌─────────────┐
@@ -418,6 +419,70 @@ Pragma: no-cache
 }
 ```
 
+### 5.5 GPIO Control Endpoint (Emergency Stop)
+
+**Endpoint:** `POST http://192.168.4.1/gpio`
+
+**Purpose:** Control ESP32 GPIO pins for emergency stop and hardware control
+
+**Request Headers:**
+```http
+POST /gpio HTTP/1.1
+Host: 192.168.4.1
+Content-Type: application/json
+Accept: application/json
+Origin: https://behemoth-companion.vercel.app
+```
+
+**Request Body:**
+```json
+{
+  "pin": 2,
+  "state": 1
+}
+```
+
+**Parameters:**
+| Parameter | Type | Values | Required | Description |
+|-----------|------|---------|----------|-------------|
+| `pin` | number | 2, 4, 5, 12-19, 21-23, 25-27, 32-33 | ✅ | GPIO pin number |
+| `state` | number | 0 or 1 | ✅ | Pin state (0=LOW, 1=HIGH) |
+
+**Response Headers:**
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Methods: POST, OPTIONS
+Access-Control-Allow-Headers: Content-Type
+```
+
+**Success Response (200 OK):**
+```json
+{
+  "success": true,
+  "pin": 2,
+  "state": 1,
+  "message": "GPIO2 set to HIGH"
+}
+```
+
+**Error Response (400 Bad Request):**
+```json
+{
+  "success": false,
+  "error": "Invalid pin number or state",
+  "pin": null,
+  "state": null
+}
+```
+
+**Emergency Stop Implementation:**
+- **GPIO2**: Controls built-in LED (blue LED on most ESP32 boards)
+- **Usage**: Web app sends `{"pin": 2, "state": 1}` to activate emergency LED
+- **Purpose**: Visual indicator that emergency stop has been triggered
+- **Safety**: Only validates safe GPIO pins, rejects system pins (0, 1, 6-11)
+
 ---
 
 ## 6. Component Architecture
@@ -429,9 +494,11 @@ App (pages/_app.tsx)
 ├── Home (pages/index.tsx)
 │   ├── AuthModal
 │   ├── ESP32ConnectionModal
+│   ├── EmergencyStop (when authenticated)
 │   └── Navigation Grid
 ├── Position (pages/position.tsx)
 │   ├── useAuthProtection()
+│   ├── EmergencyStop (top-right)
 │   └── GPSTracker
 │       ├── Google Maps Integration
 │       ├── Real-time Polling
@@ -439,12 +506,14 @@ App (pages/_app.tsx)
 │       └── Status Indicators
 ├── FieldMap (pages/fieldmap.tsx)
 │   ├── useAuthProtection()
+│   ├── EmergencyStop (top-right)
 │   └── FieldMapper
 │       ├── Grid Visualization
 │       ├── Plant Positioning
 │       └── ESP32 Data Integration
 ├── Health (pages/health.tsx)
 │   ├── useAuthProtection()
+│   ├── EmergencyStop (top-right)
 │   └── SaplingDetector
 │       ├── TensorFlow.js Loading
 │       ├── Camera Integration

@@ -1,5 +1,8 @@
 // ESP32 connection utilities for direct hardware integration
-// Browser connects directly to ESP32 HTTP server on local WiFi network
+// Browser connects directly to ESP32 HTTP server via hotspot (192.168.4.1)
+
+// Hardcoded ESP32 IP (ESP32 runs as WiFi Access Point)
+const ESP32_IP = '192.168.4.1'
 
 // Type Definitions
 
@@ -28,46 +31,18 @@ export interface ESP32Data {
 }
 
 export interface ESP32Connection {
-  ip: string
   connected: boolean
   lastUpdate: number | null
   error: string | null
 }
 
-const ESP32_IP_KEY = 'behemoth_esp32_ip'
-
 // Connection Management
 
-export function getESP32IP(): string | null {
-  try {
-    return localStorage.getItem(ESP32_IP_KEY)
-  } catch (error) {
-    console.error('Failed to get ESP32 IP from localStorage:', error)
-    return null
-  }
+export function getESP32IP(): string {
+  return ESP32_IP
 }
 
-export function saveESP32IP(ip: string): void {
-  try {
-    localStorage.setItem(ESP32_IP_KEY, ip)
-  } catch (error) {
-    console.error('Failed to save ESP32 IP to localStorage:', error)
-  }
-}
-
-export function removeESP32IP(): void {
-  try {
-    localStorage.removeItem(ESP32_IP_KEY)
-  } catch (error) {
-    console.error('Failed to remove ESP32 IP from localStorage:', error)
-  }
-}
-
-export function isESP32Connected(): boolean {
-  return getESP32IP() !== null
-}
-
-// IP Validation
+// IP Validation (deprecated - kept for backward compatibility)
 
 export function validateESP32IP(ip: string): boolean {
   // Basic IPv4 pattern validation
@@ -92,6 +67,7 @@ export async function fetchWithTimeout(url: string, timeoutMs: number = 5000): P
     const response = await fetch(url, {
       signal: controller.signal,
       mode: 'cors',
+      cache: 'no-store',
     })
     clearTimeout(timeoutId)
     return response
@@ -105,12 +81,12 @@ export async function fetchWithTimeout(url: string, timeoutMs: number = 5000): P
         throw new Error('CORS error - ESP32 must set Access-Control-Allow-Origin header')
       }
     }
-    throw new Error('Cannot reach ESP32 - check IP address and WiFi connection')
+    throw new Error('Cannot reach ESP32 - check WiFi connection')
   }
 }
 
-export async function fetchESP32Data(ip: string): Promise<ESP32Data> {
-  const url = `http://${ip}/data`
+export async function fetchESP32Data(): Promise<ESP32Data> {
+  const url = `http://${ESP32_IP}/data`
 
   try {
     const response = await fetchWithTimeout(url, 5000)
@@ -135,9 +111,9 @@ export async function fetchESP32Data(ip: string): Promise<ESP32Data> {
   }
 }
 
-export async function testESP32Connection(ip: string): Promise<boolean> {
+export async function testESP32Connection(): Promise<boolean> {
   try {
-    await fetchESP32Data(ip)
+    await fetchESP32Data()
     return true
   } catch (error) {
     console.error('ESP32 connection test failed:', error)
@@ -166,7 +142,7 @@ export function classifyESP32Error(error: Error): {
     return {
       type: 'timeout',
       message: 'Connection Timeout',
-      suggestion: 'ESP32 not responding. Check if device is powered on and on same WiFi.'
+      suggestion: 'ESP32 not responding. Check if device is powered on and connected to "Transplanter" WiFi.'
     }
   }
 
@@ -182,13 +158,13 @@ export function classifyESP32Error(error: Error): {
     return {
       type: 'network',
       message: 'Network Error',
-      suggestion: 'Check IP address and ensure phone and ESP32 are on same WiFi network.'
+      suggestion: 'Ensure phone is connected to "Transplanter" WiFi (192.168.4.1)'
     }
   }
 
   return {
     type: 'unknown',
     message: 'Connection Error',
-    suggestion: 'Please check your connection and try again.'
+    suggestion: 'Please check your WiFi connection and try again.'
   }
 }

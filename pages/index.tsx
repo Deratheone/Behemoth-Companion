@@ -7,21 +7,19 @@ import InstallPWA from '../components/InstallPWA'
 import AuthModal from '../components/AuthModal'
 import UserBadge from '../components/UserBadge'
 import ESP32ConnectionModal from '../components/ESP32ConnectionModal'
-import ESP32Status from '../components/ESP32Status'
 import { User, getUser, removeUser } from '../utils/auth'
-import { getESP32IP, saveESP32IP, removeESP32IP } from '../utils/esp32'
+import { useESP32Connection } from '../hooks/useESP32Connection'
 
 export default function Home() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [showAuthModal, setShowAuthModal] = useState(false)
-  const [esp32IP, setEsp32IP] = useState<string | null>(null)
   const [showESP32Modal, setShowESP32Modal] = useState(false)
+  const { isConnected } = useESP32Connection()
 
-  // Load user and ESP32 IP from localStorage on mount
+  // Load user from localStorage on mount
   useEffect(() => {
     setUser(getUser())
-    setEsp32IP(getESP32IP())
   }, [])
 
   // Handle successful authentication
@@ -34,19 +32,6 @@ export default function Home() {
   const handleLogout = () => {
     removeUser()
     setUser(null)
-  }
-
-  // Handle ESP32 connection
-  const handleESP32Connect = (ip: string) => {
-    saveESP32IP(ip)
-    setEsp32IP(ip)
-    setShowESP32Modal(false)
-  }
-
-  // Handle ESP32 disconnection
-  const handleESP32Disconnect = () => {
-    removeESP32IP()
-    setEsp32IP(null)
   }
 
   return (
@@ -75,9 +60,7 @@ export default function Home() {
         <div className="fixed top-4 right-4 z-50 flex items-center gap-3">
           {user ? (
             <>
-              {esp32IP ? (
-                <ESP32Status ip={esp32IP} onDisconnect={handleESP32Disconnect} />
-              ) : (
+              {!isConnected && (
                 <button
                   onClick={() => setShowESP32Modal(true)}
                   className="flex items-center gap-2 rounded-xl bg-cyan-600 px-3 py-2 text-sm text-white transition-colors hover:bg-cyan-500 shadow-lg"
@@ -88,6 +71,15 @@ export default function Home() {
                   <span className="hidden sm:inline">Connect to Transplanter</span>
                   <span className="sm:hidden">Connect</span>
                 </button>
+              )}
+              {isConnected && (
+                <div className="flex items-center gap-2 rounded-xl bg-green-600/20 border border-green-500/30 px-3 py-2 text-sm text-green-400">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="hidden sm:inline">Connected</span>
+                  <span className="sm:hidden">✓</span>
+                </div>
               )}
               <UserBadge user={user} onLogout={handleLogout} />
             </>
@@ -208,7 +200,7 @@ export default function Home() {
         <ESP32ConnectionModal
           isOpen={showESP32Modal}
           onClose={() => setShowESP32Modal(false)}
-          onConnect={handleESP32Connect}
+          onConnected={() => setShowESP32Modal(false)}
         />
       </main>
     </>

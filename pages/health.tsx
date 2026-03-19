@@ -1,18 +1,16 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useState } from 'react'
-import dynamic from 'next/dynamic'
 import FloatingLines from '../components/FloatingLines'
 import type { LoadStage } from '../components/SaplingDetector'
+import SaplingDetector from '../components/SaplingDetector'
 import { useAuthProtection } from '../hooks/useAuthProtection'
-
-const SaplingDetector = dynamic(() => import('../components/SaplingDetector'), {
-  ssr: false,
-})
+import { useESP32Connection } from '../hooks/useESP32Connection'
 
 export default function Health() {
   const router = useRouter()
   const [loadStage, setLoadStage] = useState<LoadStage>('tf')
+  const { isConnected } = useESP32Connection()
 
   // Protect route - redirect if not authenticated
   useAuthProtection()
@@ -54,11 +52,19 @@ export default function Health() {
             <div className="w-16" /> {/* Spacer for centering */}
           </div>
 
+          {/* ESP Connection Status */}
+          {!isConnected && (
+            <div className="px-4 py-2 bg-yellow-900/20 border-l-2 border-yellow-600">
+              <p className="text-xs text-yellow-300">⚠ ESP32 not connected — displaying mock data</p>
+            </div>
+          )}
+
           {/* Main Content */}
-          <div className="flex-1 flex items-center justify-center px-4 py-8">
+          <div className="flex-1 flex items-center justify-center px-4 py-8 relative">
               <div className="relative w-full max-w-md mx-auto">
+                <SaplingDetector onStageChange={setLoadStage} />
                 {isLoading && (
-                  <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 rounded-2xl">
+                  <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 rounded-2xl pointer-events-none">
                     <div className="text-center">
                       <p className="text-gray-300 text-sm mb-3">
                         {loadStage === 'tf' && 'Loading TensorFlow.js...'}
@@ -74,7 +80,6 @@ export default function Health() {
                     </div>
                   </div>
                 )}
-                <SaplingDetector onStageChange={setLoadStage} />
               </div>
           </div>
         </div>

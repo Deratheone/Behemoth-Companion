@@ -166,58 +166,61 @@ export default function SaplingDetector({ onStageChange }: Props) {
           Upload an image to check whether it contains a sapling
         </p>
 
-        {!loading && (
-          <>
-            <label
-              className={`block p-6 border-2 border-dashed rounded-xl cursor-pointer text-center transition-all ${
-                isDragging
-                  ? 'border-emerald-400 bg-emerald-500/10 scale-[1.02]'
-                  : 'border-emerald-500/50 hover:border-emerald-400 hover:bg-emerald-500/5'
-              }`}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-            >
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                hidden
-              />
-              <span className="text-emerald-400 font-semibold text-sm">
-                {isDragging ? '📥 Drop image here' : '📤 Click to upload or drag image here'}
-              </span>
-            </label>
-
-            {imageURL && (
-              <div className="mt-5 rounded-xl overflow-hidden border border-gray-700">
-                <img
-                  ref={imgRef}
-                  src={imageURL}
-                  alt="Uploaded"
-                  className="w-full object-cover"
-                />
-              </div>
-            )}
-
-            <div
-              className={`mt-5 p-4 rounded-xl font-semibold text-center text-sm ${
-                resultType === 'success'
-                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                  : resultType === 'error'
-                  ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                  : resultType === 'warning'
-                  ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                  : 'bg-gray-500/20 text-gray-400 border border-gray-500/30'
-              }`}
-            >
-              {analyzing && (
-                <span className="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2 align-middle" />
-              )}
-              {result}
-            </div>
-          </>
+        {loading && (
+          <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+            <p className="text-blue-300 text-xs">Loading AI model...</p>
+          </div>
         )}
+
+        <label
+          className={`block p-6 border-2 border-dashed rounded-xl cursor-pointer text-center transition-all ${
+            isDragging
+              ? 'border-emerald-400 bg-emerald-500/10 scale-[1.02]'
+              : 'border-emerald-500/50 hover:border-emerald-400 hover:bg-emerald-500/5'
+          } ${loading ? 'opacity-60 cursor-not-allowed' : ''}`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleImageUpload}
+            hidden
+            disabled={loading}
+          />
+          <span className="text-emerald-400 font-semibold text-sm">
+            {isDragging ? '📥 Drop image here' : '📤 Click to upload or drag image here'}
+          </span>
+        </label>
+
+        {imageURL && (
+          <div className="mt-5 rounded-xl overflow-hidden border border-gray-700">
+            <img
+              ref={imgRef}
+              src={imageURL}
+              alt="Uploaded"
+              className="w-full object-cover"
+            />
+          </div>
+        )}
+
+        <div
+          className={`mt-5 p-4 rounded-xl font-semibold text-center text-sm ${
+            resultType === 'success'
+              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+              : resultType === 'error'
+              ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+              : resultType === 'warning'
+              ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+              : 'bg-gray-500/20 text-gray-400 border border-gray-500/30'
+          }`}
+        >
+          {analyzing && (
+            <span className="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2 align-middle" />
+          )}
+          {result}
+        </div>
       </div>
     </div>
   )

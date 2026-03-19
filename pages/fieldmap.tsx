@@ -3,9 +3,11 @@ import { useRouter } from 'next/router'
 import FloatingLines from '../components/FloatingLines'
 import FieldMapper from '../components/FieldMapper'
 import { useAuthProtection } from '../hooks/useAuthProtection'
+import { useESP32Connection } from '../hooks/useESP32Connection'
 
 export default function FieldMap() {
   const router = useRouter()
+  const { isConnected } = useESP32Connection()
 
   // Protect route - redirect if not authenticated
   useAuthProtection()
@@ -44,6 +46,13 @@ export default function FieldMap() {
             </div>
             <div className="w-16" />
           </div>
+
+          {/* ESP Connection Status */}
+          {!isConnected && (
+            <div className="px-4 py-2 bg-yellow-900/20 border-l-2 border-yellow-600">
+              <p className="text-xs text-yellow-300">⚠ ESP32 not connected — displaying mock data</p>
+            </div>
+          )}
 
           {/* Main Content */}
           <div className="flex-1 px-2 pb-4">

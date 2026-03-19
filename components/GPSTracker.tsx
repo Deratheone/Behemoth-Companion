@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Script from "next/script";
-import { getESP32IP, fetchWithTimeout } from "../utils/esp32";
+import { fetchWithTimeout } from "../utils/esp32";
 import { GPS_POLL_INTERVAL_MS, GPS_REQUEST_TIMEOUT_MS, GPS_TRAIL_HISTORY_LIMIT } from "../utils/constants";
+
+// Hardcoded ESP32 IP (access point mode)
+const ESP32_IP = '192.168.4.1'
 
 interface GPSData {
   lat: number | null;
@@ -30,7 +33,6 @@ export default function GPSTracker() {
   const [clock, setClock] = useState("--:--:--");
   const [mapsLoaded, setMapsLoaded] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const [esp32IP, setEsp32IP] = useState<string | null>(null);
 
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
@@ -40,11 +42,6 @@ export default function GPSTracker() {
   const trailLogRef = useRef<HTMLDivElement>(null);
   const firstFixRef = useRef(true);
   const pendingRequestRef = useRef<AbortController | null>(null);
-
-  // Load ESP32 IP once on mount
-  useEffect(() => {
-    setEsp32IP(getESP32IP())
-  }, [])
 
   // Mobile detection
   useEffect(() => {
@@ -122,13 +119,6 @@ export default function GPSTracker() {
   // Poll GPS data from ESP32
   useEffect(() => {
     const fetchLocation = async () => {
-      // Check if ESP32 is configured
-      if (!esp32IP) {
-        setServerStatus("error")
-        setGpsStatus("error")
-        return
-      }
-
       // Cancel pending request to avoid overlapping
       if (pendingRequestRef.current) {
         pendingRequestRef.current.abort()
@@ -138,8 +128,8 @@ export default function GPSTracker() {
       pendingRequestRef.current = controller
 
       try {
-        // Use fetchWithTimeout utility
-        const res = await fetchWithTimeout(`http://${esp32IP}/data`, GPS_REQUEST_TIMEOUT_MS)
+        // Use fetchWithTimeout utility with hardcoded IP
+        const res = await fetchWithTimeout(`http://${ESP32_IP}/data`, GPS_REQUEST_TIMEOUT_MS)
 
         if (!res.ok) {
           throw new Error(`ESP32 returned error: ${res.status}`)
@@ -201,8 +191,6 @@ export default function GPSTracker() {
       }
     }
 
-    if (!esp32IP) return
-
     fetchLocation()
     const id = setInterval(fetchLocation, GPS_POLL_INTERVAL_MS)
     return () => {
@@ -211,7 +199,7 @@ export default function GPSTracker() {
         pendingRequestRef.current.abort()
       }
     }
-  }, [esp32IP])
+  }, [])
 
   useEffect(() => {
     if (trailLogRef.current) trailLogRef.current.scrollTop = trailLogRef.current.scrollHeight;

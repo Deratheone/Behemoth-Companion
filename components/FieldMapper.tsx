@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
+// Hardcoded WebSocket URL (ESP32 access point mode on port 81)
+const WS_URL = "ws://192.168.4.1:81"
+
 const COLS = 12;
 const ROWS = 14;
 
@@ -30,7 +33,6 @@ export default function FieldMapper() {
   const [currentRow, setCurrentRow] = useState(ROWS - 1);
   const [direction, setDirection] = useState<Direction>("up");
   const [stats, setStats] = useState({ total: 0, good: 0, bad: 0 });
-  const [wsUrl, setWsUrl] = useState("ws://192.168.1.100:81");
   const [wsStatus, setWsStatus] = useState<WsStatus>("disconnected");
   const [log, setLog] = useState<LogEntry[]>([]);
   const [fieldName, setFieldName] = useState("Field A-01");
@@ -104,9 +106,9 @@ export default function FieldMapper() {
       wsRef.current = null;
     }
     setWsStatus("connecting");
-    addLog(`Connecting to ${wsUrl}...`, "info");
+    addLog(`Connecting to ${WS_URL}...`, "info");
     try {
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(WS_URL);
       wsRef.current = ws;
       ws.onopen = () => {
         setWsStatus("connected");
@@ -133,7 +135,7 @@ export default function FieldMapper() {
       setWsStatus("error");
       addLog("Invalid WebSocket URL.", "bad");
     }
-  }, [wsUrl, addLog]);
+  }, [addLog]);
 
   const disconnectWs = () => {
     if (wsRef.current) wsRef.current.close();
@@ -362,20 +364,10 @@ export default function FieldMapper() {
             </div>
           </div>
 
-          {/* WebSocket config */}
+          {/* WebSocket connection status */}
           <div style={{ border: "1px solid #2d4a33", borderRadius: 6, padding: "12px 14px", background: "#0f1f14" }}>
             <div style={{ fontSize: 10, color: "#4ade80", letterSpacing: 3, marginBottom: 10 }}>ESP32 CONNECTION</div>
-            <div style={{ fontSize: 9, color: "#9ca3af", marginBottom: 4, letterSpacing: 1 }}>WEBSOCKET URL</div>
-            <input
-              value={wsUrl}
-              onChange={e => setWsUrl(e.target.value)}
-              style={{
-                width: "100%", background: "#162a1c", border: "1px solid #2d4a33", color: "#a3e635",
-                padding: "7px 8px", borderRadius: 3, fontFamily: "inherit", fontSize: 11, outline: "none",
-                boxSizing: "border-box", marginBottom: 8,
-              }}
-              placeholder="ws://192.168.x.x:81"
-            />
+            <div style={{ fontSize: 9, color: "#9ca3af", marginBottom: 6, letterSpacing: 1 }}>WEBSOCKET: {WS_URL}</div>
             <div style={{ display: "flex", gap: 6 }}>
               <button onClick={connectWs} disabled={wsStatus === "connected"} style={{
                 flex: 1, background: wsStatus === "connected" ? "#1e3320" : "transparent",

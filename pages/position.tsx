@@ -2,10 +2,12 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useState, useEffect, type ComponentType } from 'react'
 import { useAuthProtection } from '../hooks/useAuthProtection'
+import { useESP32Connection } from '../hooks/useESP32Connection'
 
 export default function Position() {
   const router = useRouter()
   const [GPSTracker, setGPSTracker] = useState<ComponentType | null>(null)
+  const { isConnected } = useESP32Connection()
 
   // Protect route - redirect if not authenticated
   useAuthProtection()
@@ -42,6 +44,13 @@ export default function Position() {
           </div>
           <div className="w-16" />
         </div>
+
+        {/* ESP Connection Status */}
+        {!isConnected && (
+          <div className="px-4 py-2 bg-yellow-900/20 border-b border-yellow-600">
+            <p className="text-xs text-yellow-300">⚠ ESP32 not connected — displaying mock data</p>
+          </div>
+        )}
 
         {/* GPS Tracker */}
         {GPSTracker ? <GPSTracker /> : null}

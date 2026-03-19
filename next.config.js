@@ -3,11 +3,21 @@ const withPWA = require('next-pwa')({
   dest: 'public',
   register: true,
   skipWaiting: true,
-  disable: process.env.NODE_ENV === 'development'
+  disable: process.env.NODE_ENV === 'development',
+  runtimeCaching: [
+    {
+      // ESP32 API requests - never cache, always hit network
+      urlPattern: /^http:\/\/192\.168\.4\.1\//,
+      handler: 'NetworkOnly',
+      options: {
+        cacheName: 'esp32-api-no-cache',
+      }
+    }
+  ]
 })
 
 const nextConfig = {
-  reactStrictMode: true,
+  reactStrictMode: false,
   webpack: (config, { isServer }) => {
     // TensorFlow.js needs these fallbacks for browser builds
     if (!isServer) {

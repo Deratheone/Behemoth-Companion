@@ -1,14 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-
-// Hardcoded WebSocket URL (ESP32 access point mode on port 81)
-const WS_URL = "ws://192.168.4.1:81"
+import { connectMQTT, onMQTTStatus, type MQTTStatus } from "../utils/mqtt";
 
 const COLS = 12;
 const ROWS = 14;
 
 type CellValue = "good" | "bad" | null;
 type Direction = "up" | "down";
-type WsStatus = "disconnected" | "connecting" | "connected" | "error";
 type LogType = "info" | "good" | "bad" | "warn";
 
 interface LogEntry {
@@ -33,12 +30,11 @@ export default function FieldMapper() {
   const [currentRow, setCurrentRow] = useState(ROWS - 1);
   const [direction, setDirection] = useState<Direction>("up");
   const [stats, setStats] = useState({ total: 0, good: 0, bad: 0 });
-  const [wsStatus, setWsStatus] = useState<WsStatus>("disconnected");
+  const [mqttStatus, setMqttStatus] = useState<MQTTStatus>("disconnected");
   const [log, setLog] = useState<LogEntry[]>([]);
   const [fieldName, setFieldName] = useState("Field A-01");
   const [colFull, setColFull] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
 
   const addLog = useCallback((msg: string, type: LogType = "info") => {
@@ -100,47 +96,52 @@ export default function FieldMapper() {
   useEffect(() => { plantCropRef.current = plantCrop; }, [plantCrop]);
   useEffect(() => { nextColumnRef.current = nextColumn; }, [nextColumn]);
 
-  const connectWs = useCallback(() => {
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-    setWsStatus("connecting");
-    addLog(`Connecting to ${WS_URL}...`, "info");
-    try {
-      const ws = new WebSocket(WS_URL);
-      wsRef.current = ws;
-      ws.onopen = () => {
-        setWsStatus("connected");
-        addLog("ESP32 connected!", "good");
-      };
-      ws.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          if (data.sensor === 1) plantCropRef.current();
-          if (data.sensor === 2) nextColumnRef.current();
-        } catch {
-          addLog(`Raw: ${e.data}`, "info");
-        }
-      };
-      ws.onerror = () => {
-        setWsStatus("error");
-        addLog("Connection error.", "bad");
-      };
-      ws.onclose = () => {
-        setWsStatus("disconnected");
-        addLog("ESP32 disconnected.", "warn");
-      };
-    } catch {
-      setWsStatus("error");
-      addLog("Invalid WebSocket URL.", "bad");
-    }
-  }, [addLog]);
+  // MQTT subscription — builds grid from ESP32 sensor data
+  useEffect(() => {
+    let prevPlantCount = 0;
 
-  const disconnectWs = () => {
-    if (wsRef.current) wsRef.current.close();
-    setWsStatus("disconnected");
-  };
+    const cleanupData = connectMQTT((data) => {
+      const { field, health } = data;
+
+      // Build detection map: "row,col" → "good" | "bad"
+      const detectMap: Record<string, CellValue> = {};
+      health.detections.forEach(d => {
+        detectMap[`${d.row},${d.col}`] = d.status === "healthy" ? "good" : "bad";
+      });
+
+      // Rebuild full grid
+      const newGrid = createEmptyGrid();
+      field.plants.forEach(p => {
+        if (p.row >= 0 && p.row < ROWS && p.col >= 0 && p.col < COLS) {
+          newGrid[p.row][p.col] = detectMap[`${p.row},${p.col}`] ?? "good";
+        }
+      });
+      setGrid(newGrid);
+      setCurrentRow(field.currentRow < ROWS ? field.currentRow : ROWS - 1);
+      setCurrentCol(field.currentCol < COLS ? field.currentCol : 0);
+
+      // Log newly added plants
+      if (field.plants.length > prevPlantCount) {
+        field.plants.slice(prevPlantCount).forEach(p => {
+          const quality = detectMap[`${p.row},${p.col}`] ?? "good";
+          addLog(`Plant at col ${p.col + 1}, row ${p.row + 1} → ${quality.toUpperCase()}`, quality === "good" ? "good" : "bad");
+        });
+        prevPlantCount = field.plants.length;
+      }
+
+      // Update stats
+      const good = field.plants.filter(p => (detectMap[`${p.row},${p.col}`] ?? "good") === "good").length;
+      setStats({ total: field.plants.length, good, bad: field.plants.length - good });
+    });
+
+    const cleanupStatus = onMQTTStatus((s) => {
+      setMqttStatus(s);
+      if (s === "connected") addLog("ESP32 connected via MQTT ✓", "good");
+      if (s === "disconnected") addLog("MQTT disconnected — waiting...", "warn");
+    });
+
+    return () => { cleanupData(); cleanupStatus(); };
+  }, [addLog]);
 
   const resetField = () => {
     setGrid(createEmptyGrid());
@@ -162,18 +163,18 @@ export default function FieldMapper() {
   const CELL = isMobile ? 24 : 32;
   const LABEL_W = isMobile ? 20 : 24;
 
-  const statusColor: Record<WsStatus, string> = {
-    connected: "#22c55e",
-    connecting: "#f59e0b",
+  const statusColor: Record<MQTTStatus, string> = {
+    connected:    "#22c55e",
+    connecting:   "#f59e0b",
     disconnected: "#6b7280",
-    error: "#ef4444",
+    error:        "#ef4444",
   };
 
-  const statusLabel: Record<WsStatus, string> = {
-    connected: "CONNECTED",
-    connecting: "CONNECTING...",
+  const statusLabel: Record<MQTTStatus, string> = {
+    connected:    "CONNECTED",
+    connecting:   "CONNECTING...",
     disconnected: "DISCONNECTED",
-    error: "ERROR",
+    error:        "ERROR",
   };
 
   return (
@@ -208,8 +209,8 @@ export default function FieldMapper() {
             />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 8, height: 8, borderRadius: "50%", background: statusColor[wsStatus], boxShadow: wsStatus === "connected" ? `0 0 8px ${statusColor[wsStatus]}` : "none", animation: wsStatus === "connecting" ? "fieldmap-pulse 1s infinite" : "none" }} />
-            <span style={{ fontSize: 11, color: statusColor[wsStatus], letterSpacing: 2 }}>{statusLabel[wsStatus]}</span>
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: statusColor[mqttStatus], boxShadow: mqttStatus === "connected" ? `0 0 8px ${statusColor[mqttStatus]}` : "none", animation: mqttStatus === "connecting" ? "fieldmap-pulse 1s infinite" : "none" }} />
+            <span style={{ fontSize: 11, color: statusColor[mqttStatus], letterSpacing: 2 }}>{statusLabel[mqttStatus]}</span>
           </div>
         </div>
       </div>
@@ -364,27 +365,17 @@ export default function FieldMapper() {
             </div>
           </div>
 
-          {/* WebSocket connection status */}
+          {/* MQTT connection status */}
           <div style={{ border: "1px solid #2d4a33", borderRadius: 6, padding: "12px 14px", background: "#0f1f14" }}>
             <div style={{ fontSize: 10, color: "#4ade80", letterSpacing: 3, marginBottom: 10 }}>ESP32 CONNECTION</div>
-            <div style={{ fontSize: 9, color: "#9ca3af", marginBottom: 6, letterSpacing: 1 }}>WEBSOCKET: {WS_URL}</div>
-            <div style={{ display: "flex", gap: 6 }}>
-              <button onClick={connectWs} disabled={wsStatus === "connected"} style={{
-                flex: 1, background: wsStatus === "connected" ? "#1e3320" : "transparent",
-                border: "1px solid #22c55e", color: wsStatus === "connected" ? "#4ade80" : "#22c55e",
-                padding: "7px 0", borderRadius: 3, cursor: wsStatus === "connected" ? "default" : "pointer",
-                fontFamily: "inherit", fontSize: 10, letterSpacing: 1,
-              }}>CONNECT</button>
-              <button onClick={disconnectWs} disabled={wsStatus === "disconnected"} style={{
-                flex: 1, background: "transparent", border: "1px solid #374151", color: "#6b7280",
-                padding: "7px 0", borderRadius: 3, cursor: wsStatus === "disconnected" ? "default" : "pointer",
-                fontFamily: "inherit", fontSize: 10, letterSpacing: 1,
-              }}>DISCONNECT</button>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: statusColor[mqttStatus], boxShadow: mqttStatus === "connected" ? `0 0 8px ${statusColor[mqttStatus]}` : "none" }} />
+              <span style={{ fontSize: 11, color: statusColor[mqttStatus], letterSpacing: 2 }}>{statusLabel[mqttStatus]}</span>
             </div>
-            <div style={{ marginTop: 8, fontSize: 9, color: "#6b7280", lineHeight: 1.6 }}>
-              ESP32 must send:<br />
-              <span style={{ color: "#9ca3af" }}>{"{}"}&quot;sensor&quot;:1{"}"}</span> → Plant<br />
-              <span style={{ color: "#9ca3af" }}>{"{}"}&quot;sensor&quot;:2{"}"}</span> → Next Column
+            <div style={{ marginTop: 4, fontSize: 9, color: "#6b7280", lineHeight: 1.6 }}>
+              MQTT → broker.hivemq.com<br />
+              Topic: <span style={{ color: "#9ca3af" }}>behemoth/v1/sensor/data</span><br />
+              Auto-reconnects every 3s
             </div>
           </div>
 

@@ -1,6 +1,5 @@
-import React, { useState } from 'react'
-import { emergencyStop } from '../utils/esp32'
-import { useESP32Connection } from '../hooks/useESP32Connection'
+import React, { useState, useEffect } from 'react'
+import { emergencyStop, onMQTTStatus } from '../utils/mqtt'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 
 interface EmergencyStopProps {
@@ -8,57 +7,62 @@ interface EmergencyStopProps {
 }
 
 export default function EmergencyStop({ className = '' }: EmergencyStopProps) {
-  const { isConnected } = useESP32Connection()
+  const [mqttConnected, setMqttConnected] = useState(false)
   const [isActivating, setIsActivating] = useState(false)
+  const [activated, setActivated] = useState(false)
   const [showDisconnectedModal, setShowDisconnectedModal] = useState(false)
+
+  // Track MQTT connection status
+  useEffect(() => {
+    return onMQTTStatus((s) => setMqttConnected(s === 'connected'))
+  }, [])
 
   // Close modal with ESC key
   useEscapeKey(showDisconnectedModal, () => setShowDisconnectedModal(false))
 
-  const handleEmergencyStop = async () => {
-    if (!isConnected) {
+  const handleEmergencyStop = () => {
+    if (!mqttConnected) {
       setShowDisconnectedModal(true)
       return
     }
 
     setIsActivating(true)
 
-    try {
-      await emergencyStop()
-      // Success - LED should now be on
-      console.log('Emergency stop activated - ESP32 LED turned on')
-    } catch (error) {
-      console.error('Emergency stop failed:', error)
-      // Even if there's an error, we still tried to send the command
-      // Could show an error message but for emergency stop, better to assume it went through
-    } finally {
+    // Publish {"action":"emergency_stop"} — ESP32 activates relay + disables motors
+    emergencyStop()
+
+    // Show activated state briefly, then lock button (stop is permanent until power cycle)
+    setTimeout(() => {
       setIsActivating(false)
-    }
+      setActivated(true)
+    }, 800)
   }
 
   return (
     <>
       <button
         onClick={handleEmergencyStop}
-        disabled={isActivating}
+        disabled={isActivating || activated}
         className={`
           px-3 py-2 rounded-xl font-bold text-white text-sm
           transition-all duration-200 shadow-lg
-          ${isActivating
+          ${activated
+            ? 'bg-red-900 border border-red-700 cursor-not-allowed opacity-80'
+            : isActivating
             ? 'bg-gray-600 cursor-not-allowed'
             : 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 hover:scale-105 active:scale-95'
           }
           flex items-center gap-2 border border-red-500/30 ${className}
         `}
         aria-label="Emergency Stop"
-        title="Emergency Stop - Activate Transplanter safety LED"
+        title={activated ? 'Emergency Stop activated — relay ON, motors disabled' : 'Emergency Stop — activates relay on ESP32'}
       >
-        <div className="w-2 h-2 bg-red-200 rounded-full animate-pulse" />
+        <div className={`w-2 h-2 rounded-full ${activated ? 'bg-red-400' : 'bg-red-200 animate-pulse'}`} />
         <span className="hidden sm:inline">
-          {isActivating ? 'STOPPING...' : 'EMERGENCY STOP'}
+          {activated ? 'STOPPED ⬛' : isActivating ? 'STOPPING...' : 'EMERGENCY STOP'}
         </span>
         <span className="sm:hidden">
-          {isActivating ? '⏹️' : '🚨'}
+          {activated ? '⬛' : isActivating ? '⏹️' : '🚨'}
         </span>
       </button>
 
@@ -93,10 +97,11 @@ export default function EmergencyStop({ className = '' }: EmergencyStopProps) {
               </svg>
               <div className="flex-1">
                 <p className="text-red-300 text-sm font-medium mb-2">
-                  Emergency stop cannot be activated because the Transplanter device is not connected.
+                  Emergency stop cannot be activated — MQTT not connected.
                 </p>
                 <p className="text-red-200/70 text-xs">
-                  Connect to the &quot;Transplanter&quot; WiFi network first, then try again.
+                  Make sure the ESP32 is powered on and connected to your phone hotspot,
+                  then wait a few seconds for the MQTT connection to establish.
                 </p>
               </div>
             </div>

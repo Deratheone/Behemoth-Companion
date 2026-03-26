@@ -1,120 +1,329 @@
 # ESP32 Implementation Guide - Behemoth Companion
 
-## Complete Specification for ESP32 Communication
+## Complete Specification for ESP32 Firmware v3.0
 
-This document provides full technical specifications for implementing the ESP32 firmware to communicate with the Behemoth Companion web application.
+This document provides full technical specifications for the ESP32 firmware that communicates with the Behemoth Companion web application via **MQTT cloud relay + captive portal WiFi provisioning**.
+
+**Last Updated:** March 27, 2026
+**Architecture:** MQTT over phone hotspot (Station mode) — replaces old HTTP/AP mode
 
 ---
 
 ## 1. OVERVIEW
 
-### What the ESP32 Does
-- Acts as an HTTP server on local WiFi network
-- Collects GPS data from connected GPS module
-- Monitors crop field grid positions
-- Detects plant health status
-- Sends all data as JSON via HTTP endpoint
-- Requires CORS headers for browser access
+### What the ESP32 Does (v3.0)
+
+- Runs a **captive portal** on first boot for WiFi credential setup
+- Connects to the user's **phone hotspot** as a WiFi client (Station mode)
+- Reads GPS data from connected GPS module via UART
+- Monitors stepper motors, sensors, servo
+- **Publishes** all sensor data every 3 seconds to cloud MQTT broker
+- **Subscribes** to GPIO control commands (Emergency Stop) from web app
+- Keeps an HTTP debug server running locally for development use
+
+### Why MQTT Instead of HTTP
+
+The website is served from Vercel over HTTPS. Browsers enforce **Mixed Content Policy**: HTTPS pages cannot make HTTP requests. Since the ESP32 only speaks HTTP (port 80), the browser blocks every fetch before it runs — even with correct CORS headers.
+
+The MQTT relay approach routes data through a cloud broker. The browser connects to the broker over `wss://` (secure WebSocket) — no HTTP, no mixed content, no CORS.
+
+```
+OLD (broken on HTTPS):
+  Browser → HTTP GET http://192.168.4.1/data → BLOCKED by browser
+
+NEW (works everywhere):
+  ESP32 → MQTT publish → HiveMQ broker → wss:// → Browser
+  Browser → MQTT publish → HiveMQ broker → MQTT subscribe → ESP32
+```
 
 ### Communication Model
-- **Protocol**: HTTP/1.1 (REST API)
-- **Server Type**: TCP Server on ESP32
-- **Port**: 80 (HTTP default)
-- **Endpoint**: `GET /data`
-- **Response Format**: JSON
-- **Response Interval**: Every poll (app polls every 3000ms, expects response within 5000ms)
+
+| Property | Value |
+|----------|-------|
+| **Protocol** | MQTT 3.1.1 |
+| **Broker** | broker.hivemq.com (free, public) |
+| **ESP32 Port** | 1883 (plain TCP) |
+| **Browser Port** | 8884 (MQTT over WSS) |
+| **Publish Topic** | `behemoth/v1/sensor/data` |
+| **Subscribe Topic** | `behemoth/v1/control/gpio` |
+| **Status Topic** | `behemoth/v1/status` |
+| **Publish Interval** | Every 3000ms |
+| **QoS Level** | 0 (fire-and-forget, sufficient for telemetry) |
 
 ---
 
 ## 2. HARDWARE REQUIREMENTS
 
+### ESP32 Main Board
+- **Recommended:** ESP32-DevKitC, ESP32-WROOM-32
+- **WiFi:** Built-in 2.4GHz (used in Station mode)
+- **Flash:** 4MB minimum (for firmware + NVS credential storage)
+
 ### GPS Module
-- **Recommended**: NEO-6M GPS module (UART interface)
-- **Alternatives**: NEO-M8N, NEO-M9N (more accurate)
-- **UART Connection**:
-  - RX → ESP32 GPIO 16 (or configurable)
-  - TX → ESP32 GPIO 17 (or configurable)
+- **Recommended:** NEO-6M (UART interface)
+- **Alternatives:** NEO-M8N, NEO-M9N (more accurate)
+- **UART Connection:**
+  - RX → ESP32 GPIO 16 (UART1)
+  - TX → ESP32 GPIO 17 (UART1)
   - GND → ESP32 Ground
   - VCC → 5V Supply
+- **Baud Rate:** 9600
 
-### IMU/Compass (Optional for heading)
-- Can track transplanter orientation
-- Not required for GPS-only operation
-
-### WiFi Configuration
-- ESP32 built-in WiFi (2.4GHz)
-- Must be on same WiFi network as mobile device/computer
-- Static IP recommended (easier debugging)
+### Other Hardware
+| Component | Pins | Purpose |
+|-----------|------|---------|
+| Servo motor | GPIO 13 | Plant dropping mechanism |
+| Stepper 1 (X axis) | PUL=25, DIR=26, EN=21 | X-axis movement |
+| Stepper 2 (Y axis) | PUL=32, DIR=33, EN=27 | Y-axis movement |
+| Sensor 1 | GPIO 18 | Position detection |
+| Sensor 2 | GPIO 19 | Position detection |
+| Joystick X | GPIO 34 | Manual joystick control |
+| Joystick Y | GPIO 35 | Manual joystick control |
+| Joystick Button | GPIO 14 | Mode toggle / WiFi reset |
+| ESP32-CAM | UART2 (GPIO 4/5) | Camera image relay via serial |
 
 ---
 
 ## 3. NETWORK CONFIGURATION
 
-### WiFi Setup (Access Point / Hotspot Mode)
+### Phase 1: Captive Portal (First Boot / WiFi Reset)
 
-The ESP32 creates its own WiFi hotspot that users connect to directly. **No home router required** - perfect for farm environments.
+When no WiFi credentials are saved, the ESP32 starts in AP mode and serves a provisioning portal:
 
-#### ESP32 as Access Point:
 ```cpp
-// Configure ESP32 as WiFi Access Point (Hotspot)
-const char* ssid = "Transplanter";
-const char* password = "12345678";
-const IPAddress local_ip(192, 168, 4, 1);        // Always 192.168.4.1
-const IPAddress gateway(192, 168, 4, 1);
-const IPAddress subnet(255, 255, 255, 0);
+// AP mode for provisioning
+const char* AP_SSID     = "Transplanter-Setup";
+const char* AP_PASSWORD = "transplanter";
 
-void setupWiFi() {
-  // Start as Access Point
-  WiFi.mode(WIFI_AP);
-  WiFi.softAPConfig(local_ip, gateway, subnet);
-  WiFi.softAP(ssid, password);
+WiFi.mode(WIFI_AP);
+WiFi.softAP(AP_SSID, AP_PASSWORD);
+WiFi.softAPConfig(
+  IPAddress(192,168,4,1),
+  IPAddress(192,168,4,1),
+  IPAddress(255,255,255,0)
+);
 
-  Serial.print("ESP32 Access Point Created:");
-  Serial.print("SSID: ");
-  Serial.println(ssid);
-  Serial.print("IP Address: ");
-  Serial.println(WiFi.softAPIP());  // Will be 192.168.4.1
-  Serial.print("Password: ");
-  Serial.println(password);
+// DNS redirect — all domains → 192.168.4.1 (triggers captive portal)
+dnsServer.start(53, "*", IPAddress(192,168,4,1));
+
+// HTTP server handles /  (portal page) and /connect (form submit)
+server.on("/", HTTP_GET, handlePortalRoot);
+server.on("/connect", HTTP_POST, handleConnect);
+server.onNotFound(handlePortalRedirect);
+server.begin();
+```
+
+### Phase 2: Station Mode (After Credentials Set)
+
+```cpp
+// Load saved credentials from NVS
+prefs.begin("wifi_cfg", true);
+String ssid     = prefs.getString("ssid", "");
+String password = prefs.getString("password", "");
+prefs.end();
+
+// Connect as WiFi client
+WiFi.mode(WIFI_STA);
+WiFi.begin(ssid.c_str(), password.c_str());
+// Wait up to 15 seconds
+while (WiFi.status() != WL_CONNECTED && timeout not expired) {
+  delay(400);
+}
+// On success: got internet via phone's mobile data
+```
+
+### Saving Credentials (Portal Submit Handler)
+
+```cpp
+void handleConnect() {
+  String ssid     = server.arg("ssid");
+  String password = server.arg("password");
+
+  // Serve redirect page immediately (before saving)
+  String html = FPSTR(SUCCESS_HTML);
+  html.replace("SSID_PLACEHOLDER", ssid);
+  server.send(200, "text/html", html);
+
+  // Save to NVS flash (survives power-off)
+  prefs.begin("wifi_cfg", false);
+  prefs.putString("ssid",     ssid);
+  prefs.putString("password", password);
+  prefs.end();
+
+  delay(2000);
+  ESP.restart();  // Reboot into Station mode
 }
 ```
 
-#### User Connection Flow:
-1. **ESP32 creates WiFi hotspot**: Named "Transplanter", password "12345678"
-2. **User connects phone to hotspot**: Opens phone WiFi settings → selects "Transplanter" → enters password
-3. **Phone connects to 192.168.4.1**: All HTTP requests go to ESP32 directly
-4. **Web app fetches from**: `http://192.168.4.1/data`
+### WiFi Reset (Hardware Button)
 
-#### Why Hotspot Mode?
-- ✅ **No infrastructure needed** - Works without home router
-- ✅ **Reliable on farms** - Guaranteed connection to device
-- ✅ **Simple setup** - Fixed IP (192.168.4.1), no DHCP confusion
-- ✅ **Offline capable** - Pure local WiFi, no internet dependency
-- ✅ **Standard IEEE 802.11** - Compatible with all phones and devices
-  Serial.println(WiFi.localIP());
-}
-```
-
-### DNS/mDNS (Optional)
 ```cpp
-// Make ESP32 accessible via hostname
-// Then app can connect to http://esp32.local/data instead of IP
-#include <ESPmDNS.h>
-
-void setupMDNS() {
-  if (!MDNS.begin("esp32")) {
-    Serial.println("Error setting up mDNS");
-  } else {
-    Serial.println("mDNS responder started: esp32.local");
+// On boot: hold joystick button ≥ 3 seconds → clear credentials
+if (digitalRead(JOY_SW) == LOW) {
+  unsigned long holdStart = millis();
+  while (digitalRead(JOY_SW) == LOW) {
+    if (millis() - holdStart >= 3000) {
+      // Clear credentials
+      prefs.begin("wifi_cfg", false);
+      prefs.clear();
+      prefs.end();
+      ESP.restart();
+    }
+    delay(50);
   }
+  // Released before 3s → joystick calibration instead
+  calibrateJoystick();
+}
+```
+
+### Network Scan for Portal UI
+
+```cpp
+// Scan in AP_STA mode (brief), then return to pure AP
+WiFi.mode(WIFI_AP_STA);
+int n = WiFi.scanNetworks(false, false, false, 300);
+WiFi.mode(WIFI_AP);
+
+// Build HTML <option> elements
+for (int i = 0; i < n; i++) {
+  int    rssi = WiFi.RSSI(i);
+  String ssid = WiFi.SSID(i);
+  String bars = rssi > -60 ? "████" : rssi > -70 ? "███░" : rssi > -80 ? "██░░" : "█░░░";
+  options += "<option value='" + ssid + "'>" + ssid + " " + bars + "</option>";
 }
 ```
 
 ---
 
-## 4. DATA STRUCTURE SPECIFICATION
+## 4. MQTT IMPLEMENTATION
 
-### Complete JSON Response Format
+### Required Library
+
+Install via Arduino Library Manager:
+**PubSubClient** by Nick O'Leary (also: `knolleary/pubsubclient`)
+
+### MQTT Setup
+
+```cpp
+#include <PubSubClient.h>
+
+const char* MQTT_SERVER  = "broker.hivemq.com";
+const int   MQTT_PORT    = 1883;
+const char* TOPIC_DATA     = "behemoth/v1/sensor/data";
+const char* TOPIC_GPIO     = "behemoth/v1/control/gpio";
+const char* TOPIC_STATUS   = "behemoth/v1/status";
+const char* TOPIC_SNAPSHOT = "behemoth/v1/snapshot";  // Base64 JPEG per plant trigger
+
+WiFiClient   wifiClient;
+PubSubClient mqttClient(wifiClient);
+
+void connectMQTT() {
+  mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
+  mqttClient.setCallback(mqttCallback);
+  mqttClient.setKeepAlive(60);
+
+  // Unique client ID from chip MAC
+  uint64_t chipId = ESP.getEfuseMac();
+  char clientId[32];
+  sprintf(clientId, "behemoth-%08X", (uint32_t)(chipId & 0xFFFFFFFF));
+
+  if (mqttClient.connect(clientId)) {
+    mqttClient.subscribe(TOPIC_GPIO);
+    mqttClient.publish(TOPIC_STATUS, "{\"status\":\"online\"}");
+  }
+}
+```
+
+### Publishing Sensor Data
+
+```cpp
+unsigned long lastMqttPublish = 0;
+const long    MQTT_INTERVAL_MS = 3000;
+
+void publishSensorData() {
+  if (millis() - lastMqttPublish < MQTT_INTERVAL_MS) return;
+  if (!mqttClient.connected()) return;
+  lastMqttPublish = millis();
+
+  DynamicJsonDocument doc(2048);
+
+  JsonObject location = doc.createNestedObject("location");
+  if (gps.location.isValid()) {
+    location["lat"] = gps.location.lat();
+    location["lng"] = gps.location.lng();
+  } else {
+    location["lat"] = nullptr;  // null, not 0
+    location["lng"] = nullptr;
+  }
+  location["speed"]      = gps.speed.kmph();
+  location["altitude"]   = gps.altitude.meters();
+  location["satellites"] = gps.satellites.value();
+
+  JsonObject field = doc.createNestedObject("field");
+  // ... plants array, currentRow, currentCol ...
+
+  JsonObject health = doc.createNestedObject("health");
+  // ... detections array ...
+
+  doc["timestamp"] = millis();
+
+  String payload;
+  serializeJson(doc, payload);
+  mqttClient.publish(TOPIC_DATA, payload.c_str());
+}
+```
+
+### Receiving GPIO Commands (Emergency Stop)
+
+```cpp
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  String message = "";
+  for (unsigned int i = 0; i < length; i++) message += (char)payload[i];
+
+  if (String(topic) == TOPIC_GPIO) {
+    StaticJsonDocument<256> doc;
+    deserializeJson(doc, message);
+
+    int pin   = doc["pin"]   | -1;
+    int state = doc["state"] | 0;
+
+    // Safety: reject critical stepper/servo pins
+    if (pin > 0 && pin != S1_PUL && pin != S1_DIR
+               && pin != S2_PUL && pin != S2_DIR) {
+      pinMode(pin, OUTPUT);
+      digitalWrite(pin, state ? HIGH : LOW);
+      Serial.printf("GPIO %d → %s\n", pin, state ? "HIGH" : "LOW");
+    }
+  }
+}
+```
+
+### MQTT Auto-Reconnect in Loop
+
+```cpp
+void loop() {
+  // MQTT keep-alive + non-blocking reconnect
+  if (!mqttClient.connected()) {
+    static unsigned long lastReconnect = 0;
+    if (millis() - lastReconnect > 5000) {
+      lastReconnect = millis();
+      connectMQTT();
+    }
+  }
+  mqttClient.loop();
+
+  // Publish data
+  publishSensorData();
+
+  // Handle GPS, sensors, steppers...
+}
+```
+
+---
+
+## 5. DATA STRUCTURE SPECIFICATION
+
+### JSON Payload (published to `behemoth/v1/sensor/data`)
 
 ```json
 {
@@ -128,8 +337,7 @@ void setupMDNS() {
   "field": {
     "plants": [
       { "row": 0, "col": 0 },
-      { "row": 0, "col": 1 },
-      { "row": 1, "col": 0 }
+      { "row": 0, "col": 1 }
     ],
     "currentRow": 0,
     "currentCol": 1
@@ -141,12 +349,6 @@ void setupMDNS() {
         "col": 0,
         "status": "healthy",
         "confidence": 0.95
-      },
-      {
-        "row": 0,
-        "col": 1,
-        "status": "diseased",
-        "confidence": 0.87
       }
     ]
   },
@@ -156,532 +358,101 @@ void setupMDNS() {
 
 ### Field Descriptions
 
-#### `location` Object (GPS Data)
-| Field | Type | Range | Description | Example |
-|-------|------|-------|-------------|---------|
-| `lat` | number (null ok) | -90 to 90 | Latitude in decimal degrees | 20.5937 |
-| `lng` | number (null ok) | -180 to 180 | Longitude in decimal degrees | 78.9629 |
-| `speed` | number | >= 0 | Speed in km/h | 2.5 |
-| `altitude` | number | any | Height above sea level in meters | 150.5 |
-| `satellites` | number | 0-12+ | Number of satellites locked | 8 |
+#### `location` Object
+| Field | Type | Range | Notes |
+|-------|------|-------|-------|
+| `lat` | number \| null | -90 to 90 | null until GPS fix |
+| `lng` | number \| null | -180 to 180 | null until GPS fix |
+| `speed` | number | ≥ 0 | km/h from GPS |
+| `altitude` | number | any | meters above sea level |
+| `satellites` | number | 0–20 | used for signal strength UI |
 
-**Notes on GPS:**
-- App shows "waiting" status until both `lat` and `lng` are non-null
-- `speed` defaults to 0 if not available
-- `altitude` defaults to 0 if not available
-- `satellites` used for visual indicator (12-dot display)
-- Set to `null` if GPS not locked yet
+> Always send `null` (not `0`) for lat/lng when GPS is not locked. The app checks `if (!lat || !lng)` to determine GPS status.
 
-#### `field` Object (Grid Mapping)
+#### `field` Object
 | Field | Type | Description |
 |-------|------|-------------|
-| `plants` | Array<{row, col}> | List of transplanted plant positions |
-| `currentRow` | number | Current row index being worked on |
-| `currentCol` | number | Current column index being worked on |
+| `plants` | Array<{row, col}> | All transplanted positions (max 50) |
+| `currentRow` | number | Active row (from sensor trigger count) |
+| `currentCol` | number | Active col (from s1_stepCount / 100) |
 
-**Grid Coordinate System:**
-- Row 0, Col 0 = top-left corner
-- Row increases downward (↓)
-- Col increases rightward (→)
-- Used for field mapper visualization
-
-**Example Grid:**
-```
-       Col 0   Col 1   Col 2
-Row 0  [P]     [P]     [E]
-Row 1  [P]     [E]     [P]
-Row 2  [E]     [P]     [E]
-
-P = Plant, E = Empty
-```
-
-#### `health` Object (Plant Detection)
-| Field | Type | Description |
-|-------|------|-------------|
-| `detections` | Array | List of plant health assessments |
-| `detections[].row` | number | Row of detected plant |
-| `detections[].col` | number | Column of detected plant |
-| `detections[].status` | string | "healthy" \| "diseased" \| "uncertain" |
-| `detections[].confidence` | number | 0.0 to 1.0 confidence score |
-
-**Status Values:**
-- `"healthy"` - Plant appears normal and healthy (green)
-- `"diseased"` - Plant shows signs of disease/damage (red)
-- `"uncertain"` - Cannot determine status reliably (yellow)
-
-**Confidence Range:**
-- 0.0 = No confidence
-- 0.5 = 50% confidence
-- 1.0 = 100% confidence
-- App shows visual indicator based on confidence
-
-#### `timestamp`
-- **Type**: Unix timestamp in milliseconds (JavaScript compatible)
-- **Range**: Current time in ms since Jan 1, 1970
-- **Example**: 1710907200000 (March 20, 2026)
-- **How to Create** (Arduino):
-  ```cpp
-  unsigned long timestamp = millis() + startTime; // If synced with NTP
-  // Or use system time if NTP configured
-  ```
+#### `health` Object
+| Field | Type | Values |
+|-------|------|--------|
+| `detections[].status` | string | `"healthy"` \| `"diseased"` \| `"uncertain"` |
+| `detections[].confidence` | number | 0.0 to 1.0 |
 
 ---
 
-## 5. HTTP ENDPOINT SPECIFICATION
+## 6. GPIO COMMAND SPECIFICATION
 
-### GET /data
+### Command Payload (received on `behemoth/v1/control/gpio`)
 
-#### Request
-```http
-GET /data HTTP/1.1
-Host: 192.168.1.100
-Accept: application/json
-Origin: http://localhost:3000
-```
-
-**Query Parameters:** None (optional for future filtering)
-
-#### Response Headers (CRITICAL for CORS)
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json; charset=utf-8
-Content-Length: [size]
-Access-Control-Allow-Origin: *
-Access-Control-Allow-Methods: GET, OPTIONS
-Access-Control-Allow-Headers: Content-Type, Accept
-Connection: close
-Pragma: no-cache
-Cache-Control: no-cache
-```
-
-**CORS Headers Explanation:**
-- `Access-Control-Allow-Origin: *` - Allow requests from any origin (important for browser)
-- `Access-Control-Allow-Methods: GET, OPTIONS` - Allow GET and preflight OPTIONS requests
-- `Access-Control-Allow-Headers: *` - Allow any headers in request
-
-#### Response Body
-- **Content-Type**: `application/json`
-- **Charset**: UTF-8
-- **Body**: Complete JSON object (see structure above)
-- **Max Size**: Keep under 4KB for efficiency
-- **Timeout**: Respond within 5 seconds (app times out after 5000ms)
-
-#### HTTP Status Codes
-- `200 OK` - Success, valid data returned
-- `204 No Content` - No GPS fix yet, return empty data
-- `400 Bad Request` - Configuration error
-- `500 Internal Server Error` - Hardware fault
-
-#### Example Full Response
-```
-HTTP/1.1 200 OK
-Content-Type: application/json; charset=utf-8
-Content-Length: 487
-Access-Control-Allow-Origin: *
-Access-Control-Allow-Methods: GET, OPTIONS
-Access-Control-Allow-Headers: Content-Type
-Connection: close
-
-{
-  "location": {
-    "lat": 20.5937,
-    "lng": 78.9629,
-    "speed": 0,
-    "altitude": 150,
-    "satellites": 8
-  },
-  "field": {
-    "plants": [
-      {"row": 0, "col": 0},
-      {"row": 0, "col": 1}
-    ],
-    "currentRow": 0,
-    "currentCol": 1
-  },
-  "health": {
-    "detections": [
-      {
-        "row": 0,
-        "col": 0,
-        "status": "healthy",
-        "confidence": 0.95
-      }
-    ]
-  },
-  "timestamp": 1710907200000
-}
-```
-
-### POST /gpio (Emergency Stop & GPIO Control)
-
-#### Request
-```http
-POST /gpio HTTP/1.1
-Host: 192.168.4.1
-Content-Type: application/json; charset=utf-8
-Accept: application/json
-Origin: http://localhost:3000
-
-{
-  "pin": 2,
-  "state": 1
-}
-```
-
-**Body Parameters:**
-- `pin` (number): GPIO pin number to control
-- `state` (number): Pin state - 1 for HIGH/ON, 0 for LOW/OFF
-
-#### Response Headers (CRITICAL for CORS)
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json; charset=utf-8
-Content-Length: [size]
-Access-Control-Allow-Origin: *
-Access-Control-Allow-Methods: POST, OPTIONS
-Access-Control-Allow-Headers: Content-Type
-```
-
-#### Success Response (200 OK)
 ```json
-{
-  "success": true,
-  "pin": 2,
-  "state": 1,
-  "message": "GPIO2 set to HIGH"
-}
+{ "pin": 2, "state": 1 }
 ```
 
-#### Error Response (400 Bad Request)
+| Field | Type | Values |
+|-------|------|--------|
+| `pin` | number | Any safe GPIO number |
+| `state` | number | 0 = LOW, 1 = HIGH |
+
+### Protected Pins (rejected by firmware)
+
+The following pins are protected and **cannot** be controlled via MQTT:
+
+| Pin | Reason |
+|-----|--------|
+| S1_PUL (25) | Stepper 1 pulse — safety critical |
+| S1_DIR (26) | Stepper 1 direction — safety critical |
+| S2_PUL (32) | Stepper 2 pulse — safety critical |
+| S2_DIR (33) | Stepper 2 direction — safety critical |
+
+### Emergency Stop
+
+The web app Emergency Stop button sends:
 ```json
-{
-  "success": false,
-  "error": "Invalid pin number or state",
-  "pin": null,
-  "state": null
-}
+{ "pin": 2, "state": 1 }
 ```
-
-**Pin Configuration:**
-- **GPIO2**: Built-in LED (Emergency Stop indicator)
-- **Valid pins**: 2, 4, 5, 12-19, 21-23, 25-27, 32-33
-- **Invalid pins**: 0, 1, 6-11 (used internally), 34-39 (input only)
-
-**Emergency Stop Usage:**
-- Web app sends `{"pin": 2, "state": 1}` to turn ON built-in LED
-- Used as visual indicator that emergency stop has been activated
-- GPIO2 controls the blue LED on most ESP32 dev boards
+This turns on the built-in LED (GPIO 2) as a visual indicator that emergency stop has been activated.
 
 ---
 
-## 6. ARDUINO/ESP32-IDF CODE STRUCTURE
+## 7. HTTP DEBUG ENDPOINTS
 
-### Complete Minimal Example
+After connecting to the phone hotspot, the ESP32 also runs a local HTTP server at its DHCP IP. These are **for debugging only** — the web app uses MQTT exclusively.
 
-```cpp
-#include <WiFi.h>
-#include <WebServer.h>
-#include <TinyGPS++.h>
-#include <HardwareSerial.h>
-#include <ArduinoJson.h>
+```
+GET http://<ESP32-local-IP>/data          → Full JSON sensor data
+GET http://<ESP32-local-IP>/gpio?pin=2&state=1  → GPIO control
+GET http://<ESP32-local-IP>/snapshot.jpg  → Camera image
+```
 
-// ============== CONFIGURATION ==============
-const char* WIFI_SSID = "Your_WiFi_SSID";
-const char* WIFI_PASSWORD = "Your_WiFi_Password";
-const int GPS_BAUD = 9600;
-const int POLL_INTERVAL = 1000; // ms
+Find the local IP on Serial Monitor:
+```
+Connected! IP: 192.168.43.107
+```
 
-// ============== INSTANCES ==============
-WebServer server(80);
-TinyGPSPlus gps;
-HardwareSerial SerialGPS(1); // UART1
-unsigned long lastPoll = 0;
-
-// ============== GPS STATE ==============
-struct {
-  double lat = 0;
-  double lng = 0;
-  float speed = 0;
-  float altitude = 0;
-  int satellites = 0;
-  unsigned long timestamp = 0;
-} gpsData;
-
-// ============== FIELD STATE ==============
-struct Plant {
-  int row;
-  int col;
-};
-vector<Plant> plants;
-int currentRow = 0;
-int currentCol = 0;
-
-// ============== HEALTH STATE ==============
-struct Detection {
-  int row;
-  int col;
-  String status; // "healthy", "diseased", "uncertain"
-  float confidence;
-};
-vector<Detection> detections;
-
-// ============== SETUP ==============
-void setup() {
-  Serial.begin(115200);
-  delay(100);
-  Serial.println("\n\nESP32 Behemoth Starting...");
-
-  // Setup GPS
-  SerialGPS.begin(GPS_BAUD, SERIAL_8N1, 16, 17);
-  Serial.println("GPS initialized on UART1");
-
-  // Setup WiFi
-  setupWiFi();
-
-  // Setup HTTP Server
-  server.on("/data", HTTP_GET, handleGetData);
-  server.on("/data", HTTP_OPTIONS, handleOptions);
-  server.on("/gpio", HTTP_POST, handleGPIOControl);
-  server.on("/gpio", HTTP_OPTIONS, handleOptions);
-  server.begin();
-  Serial.println("HTTP Server started on port 80");
-}
-
-// ============== MAIN LOOP ==============
-void loop() {
-  // Handle HTTP requests
-  server.handleClient();
-
-  // Update GPS data
-  if (millis() - lastPoll > POLL_INTERVAL) {
-    updateGPS();
-    lastPoll = millis();
-  }
-}
-
-// ============== WIFI SETUP ==============
-void setupWiFi() {
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-  Serial.print("Connecting to WiFi: ");
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-    delay(500);
-    Serial.print(".");
-    attempts++;
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nWiFi Connected!");
-    Serial.print("IP Address: ");
-    Serial.println(WiFi.localIP());
-  } else {
-    Serial.println("\nFailed to connect to WiFi");
-  }
-}
-
-// ============== GPS UPDATE ==============
-void updateGPS() {
-  // Read available data from GPS
-  while (SerialGPS.available() > 0) {
-    gps.encode(SerialGPS.read());
-  }
-
-  // Update data if fresh location
-  if (gps.location.isUpdated()) {
-    gpsData.lat = gps.location.lat();
-    gpsData.lng = gps.location.lng();
-  }
-
-  if (gps.speed.isUpdated()) {
-    gpsData.speed = gps.speed.kmph();
-  }
-
-  if (gps.altitude.isUpdated()) {
-    gpsData.altitude = gps.altitude.meters();
-  }
-
-  if (gps.satellites.isUpdated()) {
-    gpsData.satellites = gps.satellites.value();
-  }
-
-  gpsData.timestamp = millis();
-}
-
-// ============== HTTP HANDLERS ==============
-
-// Handle OPTIONS request (CORS preflight)
-void handleOptions() {
-  server.sendHeader("Access-Control-Allow-Origin", "*");
-  server.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
-  server.send(200);
-}
-
-// Handle GET /data request
-void handleGetData() {
-  // CORS Headers
-  server.sendHeader("Access-Control-Allow-Origin", "*");
-  server.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
-  server.sendHeader("Content-Type", "application/json");
-  server.sendHeader("Cache-Control", "no-cache");
-
-  // Create JSON response
-  StaticJsonDocument<1024> doc;
-
-  // Location data
-  JsonObject location = doc.createNestedObject("location");
-  if (gpsData.lat != 0 && gpsData.lng != 0) {
-    location["lat"] = gpsData.lat;
-    location["lng"] = gpsData.lng;
-  } else {
-    location["lat"] = nullptr;
-    location["lng"] = nullptr;
-  }
-  location["speed"] = gpsData.speed;
-  location["altitude"] = gpsData.altitude;
-  location["satellites"] = gpsData.satellites;
-
-  // Field data
-  JsonObject field = doc.createNestedObject("field");
-  JsonArray plantsArray = field.createNestedArray("plants");
-  for (const auto& plant : plants) {
-    JsonObject p = plantsArray.createNestedObject();
-    p["row"] = plant.row;
-    p["col"] = plant.col;
-  }
-  field["currentRow"] = currentRow;
-  field["currentCol"] = currentCol;
-
-  // Health data
-  JsonObject health = doc.createNestedObject("health");
-  JsonArray detectionsArray = health.createNestedArray("detections");
-  for (const auto& det : detections) {
-    JsonObject d = detectionsArray.createNestedObject();
-    d["row"] = det.row;
-    d["col"] = det.col;
-    d["status"] = det.status;
-    d["confidence"] = det.confidence;
-  }
-
-  // Timestamp
-  doc["timestamp"] = gpsData.timestamp;
-
-  // Send response
-  String response;
-  serializeJson(doc, response);
-  server.send(200, "application/json", response);
-}
-
-// Handle POST /gpio request (Emergency Stop & GPIO Control)
-void handleGPIOControl() {
-  // CORS Headers
-  server.sendHeader("Access-Control-Allow-Origin", "*");
-  server.sendHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
-  server.sendHeader("Content-Type", "application/json");
-
-  // Parse JSON request body
-  if (!server.hasArg("plain")) {
-    server.send(400, "application/json", "{\"success\":false,\"error\":\"Missing request body\"}");
-    return;
-  }
-
-  StaticJsonDocument<200> requestDoc;
-  DeserializationError error = deserializeJson(requestDoc, server.arg("plain"));
-
-  if (error) {
-    server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
-    return;
-  }
-
-  // Validate pin and state parameters
-  if (!requestDoc.containsKey("pin") || !requestDoc.containsKey("state")) {
-    server.send(400, "application/json", "{\"success\":false,\"error\":\"Missing pin or state parameter\"}");
-    return;
-  }
-
-  int pin = requestDoc["pin"];
-  int state = requestDoc["state"];
-
-  // Validate pin number (only allow safe GPIO pins)
-  int validPins[] = {2, 4, 5, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33};
-  bool pinValid = false;
-  for (int i = 0; i < sizeof(validPins) / sizeof(validPins[0]); i++) {
-    if (pin == validPins[i]) {
-      pinValid = true;
-      break;
-    }
-  }
-
-  if (!pinValid) {
-    server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid pin number\"}");
-    return;
-  }
-
-  // Validate state (0 or 1)
-  if (state != 0 && state != 1) {
-    server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid state (must be 0 or 1)\"}");
-    return;
-  }
-
-  // Set GPIO pin mode and state
-  pinMode(pin, OUTPUT);
-  digitalWrite(pin, state == 1 ? HIGH : LOW);
-
-  // Create success response
-  StaticJsonDocument<200> responseDoc;
-  responseDoc["success"] = true;
-  responseDoc["pin"] = pin;
-  responseDoc["state"] = state;
-  responseDoc["message"] = String("GPIO") + String(pin) + String(state == 1 ? " set to HIGH" : " set to LOW");
-
-  String response;
-  serializeJson(responseDoc, response);
-
-  Serial.printf("GPIO Control: Pin %d set to %s\n", pin, state == 1 ? "HIGH" : "LOW");
-
-  server.send(200, "application/json", response);
-}
-
-// ============== HELPER FUNCTIONS ==============
-
-// Add plant to field
-void addPlant(int row, int col) {
-  plants.push_back({row, col});
-  Serial.printf("Plant added at (%d, %d)\n", row, col);
-}
-
-// Add health detection
-void addDetection(int row, int col, String status, float confidence) {
-  detections.push_back({row, col, status, confidence});
-  Serial.printf("Detection: (%d, %d) = %s (%.2f)\n",
-    row, col, status.c_str(), confidence);
-}
-
-// Clear field (for resetting)
-void clearField() {
-  plants.clear();
-  detections.clear();
-  Serial.println("Field cleared");
-}
+Test from laptop on same hotspot:
+```bash
+curl http://192.168.43.107/data | python -m json.tool
 ```
 
 ---
 
-## 7. REQUIRED LIBRARIES
+## 8. REQUIRED LIBRARIES
 
-### Arduino IDE / PlatformIO
+### Arduino IDE — Library Manager
 
-```txt
-TinyGPS++ by Mikal Hart
-ArduinoJson by Benoit Blanchon
-ESP32 Board Support (built-in)
-```
+| Library | Author | Version |
+|---------|--------|---------|
+| ESP32Servo | Kevin Harrington | latest |
+| TinyGPS++ | Mikal Hart | ^1.0.3 |
+| ArduinoJson | Benoit Blanchon | ^6.x |
+| **PubSubClient** | **Nick O'Leary** | **^2.8** ← NEW |
 
-### PlatformIO platformio.ini
+### PlatformIO `platformio.ini`
+
 ```ini
 [env:esp32]
 platform = espressif32
@@ -690,304 +461,217 @@ framework = arduino
 lib_deps =
     mikalhart/TinyGPS++@^1.0.3
     bblanchon/ArduinoJson@^6.19.0
+    knolleary/PubSubClient@^2.8
 monitor_speed = 115200
-monitor_filters = esp32_exception_decoder
 ```
 
 ---
 
-## 8. GPS MODULE SETUP (TinyGPS++)
+## 9. GPIO & PIN REFERENCE
 
-### NEO-6M Connection Diagram
 ```
-NEO-6M GPS Module
-  VCC -----> 5V
-  GND -----> GND
-  RX  -----> ESP32 GPIO 17 (TX1)
-  TX  -----> ESP32 GPIO 16 (RX1)
-```
+ESP32 Pin Map — Behemoth Firmware
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-### NMEA Sentence Format (What GPS sends)
-The GPS module sends NMEA sentences like:
+GPIO 4  → ESP32-CAM UART2 RX
+GPIO 5  → ESP32-CAM UART2 TX
+GPIO 13 → Servo Motor
+GPIO 14 → Joystick Button (INPUT_PULLUP)
+GPIO 16 → GPS UART1 RX
+GPIO 17 → GPS UART1 TX
+GPIO 18 → Sensor 1 (INPUT)
+GPIO 19 → Sensor 2 (INPUT)
+GPIO 21 → Stepper 1 Enable
+GPIO 25 → Stepper 1 Pulse
+GPIO 26 → Stepper 1 Direction
+GPIO 27 → Stepper 2 Enable
+GPIO 32 → Stepper 2 Pulse
+GPIO 33 → Stepper 2 Direction
+GPIO 34 → Joystick VRX (INPUT only)
+GPIO 35 → Joystick VRY (INPUT only)
+GPIO 2  → Built-in LED (Emergency Stop indicator)
 ```
-$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47
-```
-
-TinyGPS++ automatically parses these into:
-- Latitude/Longitude
-- Speed
-- Altitude
-- Number of satellites
-- Timestamp
-- And more...
 
 ---
 
-## 9. DATA UPDATE RATES
+## 10. GPS MODULE SETUP (TinyGPS++)
 
-### Recommended Polling Intervals
-| Data Type | Update Rate | Notes |
-|-----------|------------|-------|
-| GPS | 1Hz (1000ms) | Standard for consumer GPS |
-| Field Grid | 100ms or on change | When current position changes |
-| Plant Health | 100ms or on change | When detection happens |
-| Overall Response | Every request | Respond within 5 seconds |
+### NEO-6M Wiring
 
-### Query Rate from App
-- **Web App Polls**: Every 3000ms (3 seconds)
-- **Mobile App Polls**: Every 3000ms (3 seconds)
-- **Expected Response Time**: < 5000ms (5 seconds)
+```
+NEO-6M GPS Module     ESP32
+  VCC  ─────────────► 5V
+  GND  ─────────────► GND
+  RX   ─────────────► GPIO 17 (UART1 TX)
+  TX   ─────────────► GPIO 16 (UART1 RX)
+```
 
-### Optimization
-If data rarely changes, consider:
-- Sending null for GPS until location updates
-- Sending empty arrays for no detections
-- Include a "lastUpdate" field for each sensor
+### NMEA Parsing
 
----
-
-## 10. ERROR HANDLING
-
-### GPS Lock Issues
 ```cpp
+HardwareSerial SerialGPS(1);
+TinyGPSPlus gps;
+
+// In setup()
+SerialGPS.begin(9600, SERIAL_8N1, 16, 17);
+
+// In loop()
+while (SerialGPS.available() > 0) {
+  gps.encode(SerialGPS.read());
+}
+
+// Use GPS data
 if (gps.location.isValid()) {
-  // Has valid GPS lock
-} else {
-  // No GPS lock yet - send null coords
-  location["lat"] = nullptr;
-  location["lng"] = nullptr;
+  float lat = gps.location.lat();
+  float lng = gps.location.lng();
 }
 ```
 
-### WiFi Disconnection
-```cpp
-void loop() {
-  // Check WiFi status
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi disconnected, reconnecting...");
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  }
+### GPS Cold Start Note
 
-  server.handleClient();
-}
-```
-
-### JSON Serialization Overflow
-```cpp
-// If response too large, use DynamicJsonDocument
-DynamicJsonDocument doc(2048); // For larger responses
-```
-
-### GPS Serial Timeout
-```cpp
-unsigned long lastGPSUpdate = millis();
-
-void updateGPS() {
-  while (SerialGPS.available() > 0) {
-    gps.encode(SerialGPS.read());
-    lastGPSUpdate = millis();
-  }
-
-  // If no data for 10 seconds, consider GPS dead
-  if (millis() - lastGPSUpdate > 10000) {
-    Serial.println("GPS timeout - no data received");
-  }
-}
-```
+First GPS fix takes **5–10 minutes** on cold start. During this time, `gps.location.isValid()` returns false. The firmware sends `"lat": null, "lng": null` until lock is acquired.
 
 ---
 
 ## 11. TESTING & DEBUGGING
 
-### Test with cURL
-```bash
-# Test from command line
-curl -v http://192.168.1.100/data
+### Serial Monitor Output (Normal Operation)
 
-# Expected response:
-# < HTTP/1.1 200 OK
-# < Content-Type: application/json
-# < Access-Control-Allow-Origin: *
-# {
-#   "location": {...},
-#   "field": {...},
-#   "health": {...},
-#   "timestamp": ...
-# }
 ```
-
-### Serial Monitor Output
-```
-ESP32 Behemoth Starting...
+=== BEHEMOTH TRANSPLANTER ===
 GPS initialized on UART1
-Connecting to WiFi: ....
-WiFi Connected!
-IP Address: 192.168.1.100
-HTTP Server started on port 80
-Satellites: 5
-GPS Update: 20.5937, 78.9629
-Request received at /data
-Response sent: 487 bytes
+Loaded: Center(2047,2047) Deadzone=400 Cardinal=750
+Saved network found: "Deera's iPhone" — connecting...
+.....Connected! IP: 192.168.43.107
+HTTP debug server started at http://192.168.43.107
+Connecting to MQTT broker [broker.hivemq.com]... Connected! Client: behemoth-a1b2c3d4
+Subscribed to: behemoth/v1/control/gpio
+
+=== READY ===
+MQTT broker: broker.hivemq.com
+Publishing to: behemoth/v1/sensor/data
+Listening on: behemoth/v1/control/gpio
+
+MQTT → published OK
+MQTT → published OK
+>>> SENSOR 1: Servo to 62°
+Sensor 1 trigger #1
 ```
 
-### Postman / Insomnia Testing
-1. Create GET request to `http://192.168.1.100/data`
-2. Check "CORS" setting is disabled (allow cross-origin)
-3. Should receive JSON response in 1-2 seconds
-4. Check response headers include CORS headers
+### Serial Monitor — Provisioning Mode
 
----
+```
+=== BEHEMOTH TRANSPLANTER ===
+No saved WiFi credentials — starting provisioning portal
+Scanning nearby WiFi networks...
+Scan done. Found 4 networks.
+>>> Provisioning Portal started
+>>> SSID: Transplanter-Setup
+>>> IP: 192.168.4.1
+>>> Portal HTTP server started. Waiting for user...
+```
 
-## 12. PERFORMANCE TIPS
+### Test MQTT from Desktop (MQTT Explorer)
 
-### Reduce JSON Size
-- Only include fields with valid data
-- Use shorter field names if needed (but keep as specified)
-- Batch detections (send once per second)
+1. Download MQTT Explorer: https://mqtt-explorer.com/
+2. Connect to `broker.hivemq.com:1883`
+3. Subscribe to `behemoth/#`
+4. Power on ESP32 with hotspot active
+5. Watch messages arrive on `behemoth/v1/sensor/data`
+6. Publish `{"pin":2,"state":1}` to `behemoth/v1/control/gpio`
+7. Verify ESP32 Serial Monitor shows "GPIO 2 set to HIGH"
 
-### Reduce WiFi Load
-- Cache responses if data hasn't changed
-- Don't send more than 1KB per response
-- Close connection properly (Connection: close)
+### Test HTTP Debug Endpoint
 
-### Improve GPS Accuracy
-- Use a better antenna (external antenna recommended)
-- Place GPS away from metal/electronics
-- Wait 5-10 minutes for first fix (cold start)
-- Add RTC for timestamp if NTP not available
+```bash
+# Find ESP32 IP from Serial Monitor, then:
+curl http://192.168.43.107/data | python -m json.tool
 
-### Power Efficiency
-- Use Sleep modes between polls
-- Reduce polling frequency when stationary
-- Use lower WiFi transmit power
-
----
-
-## 13. FIELD MAPPING COORDINATE SYSTEM
-
-### Grid Layout Example
-```cpp
-// Define field dimensions
-const int ROWS = 10;
-const int COLS = 8;
-const float ROW_SPACING = 0.5; // meters
-const float COL_SPACING = 0.5; // meters
-
-// Current position tracking
-float currentLat = 0;
-float currentLng = 0;
-
-// Calculate grid position from GPS
-void updateGridPosition() {
-  // Assuming field origin at latitude/longitude
-  const float fieldOriginLat = 20.5937;
-  const float fieldOriginLng = 78.9629;
-
-  // Simple calculation (works for small areas)
-  // For production, use proper map projection
-  currentRow = (int)((gpsData.lat - fieldOriginLat) / (ROW_SPACING / 111000));
-  currentCol = (int)((gpsData.lng - fieldOriginLng) / (COL_SPACING / (111000 * cos(fieldOriginLat * 0.01745))));
-
-  // Clamp to grid
-  currentRow = constrain(currentRow, 0, ROWS - 1);
-  currentCol = constrain(currentCol, 0, COLS - 1);
-}
+# Test GPIO control:
+curl "http://192.168.43.107/gpio?pin=2&state=1"
 ```
 
 ---
 
-## 14. HEALTH DETECTION INTEGRATION
+## 12. ERROR HANDLING
 
-### Example: Integrate with ML Model
+### MQTT Reconnection
+
 ```cpp
-// If using ML for plant health detection
-#include <TensorFlow Lite>
-
-void detectPlantHealth() {
-  for (int r = 0; r < ROWS; r++) {
-    for (int c = 0; c < COLS; c++) {
-      // Get image/sensor data for grid cell
-      // Run ML inference
-      // Get output: healthy/diseased/uncertain + confidence
-
-      float confidence = 0.85;
-      String status = "healthy";
-
-      if (confidence > 0.7) {
-        addDetection(r, c, status, confidence);
-      }
-    }
+// In loop() — non-blocking reconnect
+if (!mqttClient.connected()) {
+  static unsigned long lastReconnect = 0;
+  if (millis() - lastReconnect > 5000) {
+    lastReconnect = millis();
+    connectMQTT();   // Will retry automatically
   }
 }
+mqttClient.loop();   // Must call every loop iteration
+```
+
+### WiFi Reconnection
+
+```cpp
+// In loop() — auto-reconnect if dropped
+if (WiFi.status() != WL_CONNECTED) {
+  // WiFi.begin() was already called — reconnects automatically
+  // MQTT will reconnect once WiFi is back
+}
+```
+
+### Failed WiFi Connection → Back to Portal
+
+```cpp
+bool connected = connectToWiFi(ssid, password, 15000);
+if (!connected) {
+  // Wrong password or hotspot not available
+  startProvisioningPortal();  // Let user try again
+}
 ```
 
 ---
 
-## 15. FULL IMPLEMENTATION CHECKLIST
+## 13. IMPLEMENTATION CHECKLIST
 
 ### Hardware
-- [ ] ESP32 board selected
-- [ ] GPS module selected and wired
-- [ ] WiFi antenna attached
-- [ ] Power supply stable (5V recommended)
-- [ ] UART pins connected correctly
+- [ ] ESP32 board
+- [ ] NEO-6M GPS module wired to GPIO 16/17
+- [ ] Servo motor on GPIO 13
+- [ ] Stepper drivers wired (X: 25/26/21, Y: 32/33/27)
+- [ ] Sensors on GPIO 18/19
+- [ ] Joystick on GPIO 34/35/14
+- [ ] ESP32-CAM on UART2 (GPIO 4/5)
 
-### Software
-- [ ] Arduino IDE / PlatformIO set up
+### Arduino IDE Setup
+- [ ] ESP32 board support installed
+- [ ] ESP32Servo library installed
 - [ ] TinyGPS++ library installed
 - [ ] ArduinoJson library installed
-- [ ] WiFi credentials configured
-- [ ] GPS UART pins configured
-- [ ] HTTP server code implemented
-- [ ] CORS headers included
-- [ ] JSON response structure correct
+- [ ] **PubSubClient library installed** ← NEW
 
-### Testing
-- [ ] GPS lock obtained (shows satellites)
-- [ ] WiFi connects successfully
-- [ ] Can ping ESP32 from computer
-- [ ] cURL request to /data returns JSON
-- [ ] Web app can connect and receive data
-- [ ] 5-second timeout is met
-- [ ] JSON schema matches expected format
+### Firmware
+- [ ] Flash `esp32_firmware.ino`
+- [ ] Open Serial Monitor (115200 baud)
+- [ ] Verify "Provisioning Portal started" on first boot
+- [ ] QR code sticker printed and placed on machine
 
-### Field Deployment
-- [ ] Static IP assigned or DHCP reserved
-- [ ] Placed away from interference
-- [ ] GPS antenna in open sky
-- [ ] Power supply adequate
-- [ ] Backup power (battery) available
-- [ ] Data logging enabled (optional)
+### First Setup Test
+- [ ] Scan QR code with phone
+- [ ] Captive portal opens automatically
+- [ ] Select hotspot → set password → submit
+- [ ] "Connecting..." page appears
+- [ ] Switch phone WiFi back to hotspot
+- [ ] Tap "Open Behemoth App"
+- [ ] App loads on Vercel
+- [ ] Serial Monitor shows "MQTT → published OK"
 
----
-
-## SUMMARY
-
-The ESP32 must:
-
-1. **Listen** on HTTP port 80
-2. **Respond** to GET `/data` requests
-3. **Return** JSON with location, field, health, timestamp
-4. **Include** CORS headers for browser access
-5. **Respond** within 5 seconds
-6. **Maintain** GPS lock with TinyGPS++
-7. **Format** data exactly as specified
-8. **Run continuously** once deployed
-
-The web app will:
-- Poll `/data` every 3 seconds
-- Display GPS trail, field grid, plant health
-- Update in real-time as data changes
-- Handle GPS lock waiting periods gracefully
-- Show connection status and diagnostics
-
-This architecture allows the mobile/web app to work anywhere on the same WiFi network as the ESP32, no require internet connection.
+### MQTT Verification
+- [ ] MQTT Explorer connected to broker.hivemq.com
+- [ ] Data arriving on `behemoth/v1/sensor/data`
+- [ ] GPIO command publishes reach ESP32
 
 ---
 
-**Questions or Issues?** Check:
-- Serial monitor output for GPS/WiFi status
-- CORS headers in HTTP response
-- JSON structure exactly matches specification
-- Response time under 5 seconds
-- GPS has valid latitude/longitude (not 0,0)
+**Document Version:** 3.0
+**Last Updated:** March 27, 2026
+**Status:** Current Production Specification ✅

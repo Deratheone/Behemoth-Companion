@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Script from "next/script";
-import { fetchWithTimeout } from "../utils/esp32";
-import { GPS_POLL_INTERVAL_MS, GPS_REQUEST_TIMEOUT_MS, GPS_TRAIL_HISTORY_LIMIT } from "../utils/constants";
+import { connectMQTT, onMQTTStatus } from "../utils/mqtt";
+import { GPS_TRAIL_HISTORY_LIMIT } from "../utils/constants";
 
-// Hardcoded ESP32 IP (access point mode)
-const ESP32_IP = '192.168.4.1'
+// Hardcoded ESP32 IP (access point mode) - kept for reference only, not used
+// const ESP32_IP = '192.168.4.1'
 
 interface GPSData {
   lat: number | null;
@@ -116,89 +116,61 @@ export default function GPSTracker() {
     if (mapsLoaded) initMap();
   }, [mapsLoaded, initMap]);
 
-  // Poll GPS data from ESP32
+  // MQTT subscription — replaces the old HTTP polling loop
   useEffect(() => {
-    const fetchLocation = async () => {
-      // Cancel pending request to avoid overlapping
-      if (pendingRequestRef.current) {
-        pendingRequestRef.current.abort()
+    const cleanupData = connectMQTT((data) => {
+      const { location, timestamp } = data
+
+      setServerStatus("ok")
+
+      if (!location.lat || !location.lng) {
+        setGpsStatus("waiting")
+        return
       }
 
-      const controller = new AbortController()
-      pendingRequestRef.current = controller
+      setGpsStatus("ok")
+      setGpsData({
+        lat: location.lat,
+        lng: location.lng,
+        speed: location.speed || 0,
+        altitude: location.altitude || 0,
+        satellites: location.satellites || 0,
+        timestamp: timestamp ? new Date(timestamp).toISOString() : new Date().toISOString(),
+      })
 
-      try {
-        // Use fetchWithTimeout utility with hardcoded IP
-        const res = await fetchWithTimeout(`http://${ESP32_IP}/data`, GPS_REQUEST_TIMEOUT_MS)
+      const pos = { lat: location.lat, lng: location.lng }
 
-        if (!res.ok) {
-          throw new Error(`ESP32 returned error: ${res.status}`)
-        }
+      if (markerRef.current) markerRef.current.setPosition(pos)
+      if (circleRef.current) circleRef.current.setCenter(pos)
 
-        const data = await res.json()
-
-        // Extract location from combined response
-        const { location, timestamp } = data
-
-        setServerStatus("ok")
-
-        if (!location.lat || !location.lng) {
-          setGpsStatus("waiting")
-          return
-        }
-
-        setGpsStatus("ok")
-        setGpsData({
-          lat: location.lat,
-          lng: location.lng,
-          speed: location.speed || 0,
-          altitude: location.altitude || 0,
-          satellites: location.satellites || 0,
-          timestamp: timestamp ? new Date(timestamp).toISOString() : new Date().toISOString(),
-        })
-
-        const pos = { lat: location.lat, lng: location.lng }
-
-        if (markerRef.current) markerRef.current.setPosition(pos)
-        if (circleRef.current) circleRef.current.setCenter(pos)
-
-        if (mapInstanceRef.current) {
-          if (firstFixRef.current) {
-            mapInstanceRef.current.panTo(pos)
-            mapInstanceRef.current.setZoom(16)
-            firstFixRef.current = false
-          } else {
-            mapInstanceRef.current.panTo(pos)
-          }
-        }
-
-        if (polylineRef.current) {
-          polylineRef.current.getPath().push(new google.maps.LatLng(pos.lat, pos.lng))
-        }
-
-        const time = new Date().toLocaleTimeString("en-GB", { hour12: false })
-        setTrail(prev => {
-          const next = [...prev, { time, coords: `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}` }]
-          return next.slice(-GPS_TRAIL_HISTORY_LIMIT)
-        })
-      } catch (error) {
-        // Only update status if not aborted
-        if (!(error instanceof Error && error.name === 'AbortError')) {
-          setServerStatus("error")
-          setGpsStatus("error")
-          console.error('GPS fetch error:', error)
+      if (mapInstanceRef.current) {
+        if (firstFixRef.current) {
+          mapInstanceRef.current.panTo(pos)
+          mapInstanceRef.current.setZoom(16)
+          firstFixRef.current = false
+        } else {
+          mapInstanceRef.current.panTo(pos)
         }
       }
-    }
 
-    fetchLocation()
-    const id = setInterval(fetchLocation, GPS_POLL_INTERVAL_MS)
-    return () => {
-      clearInterval(id)
-      if (pendingRequestRef.current) {
-        pendingRequestRef.current.abort()
+      if (polylineRef.current) {
+        polylineRef.current.getPath().push(new google.maps.LatLng(pos.lat, pos.lng))
       }
-    }
+
+      const time = new Date().toLocaleTimeString("en-GB", { hour12: false })
+      setTrail(prev => {
+        const next = [...prev, { time, coords: `${location.lat!.toFixed(5)}, ${location.lng!.toFixed(5)}` }]
+        return next.slice(-GPS_TRAIL_HISTORY_LIMIT)
+      })
+    })
+
+    const cleanupStatus = onMQTTStatus((s) => {
+      if (s === 'connected')                        setServerStatus("ok")
+      else if (s === 'connecting')                  setServerStatus("connecting")
+      else /* disconnected | error */               { setServerStatus("error"); setGpsStatus("error") }
+    })
+
+    return () => { cleanupData(); cleanupStatus() }
   }, [])
 
   useEffect(() => {

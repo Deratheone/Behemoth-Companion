@@ -144,3 +144,40 @@ Completed comprehensive code review and simplification targeting code reuse, qua
 - Linear user search optimization (low volume for test implementation)
 - Inline style objects memoization (low impact on performance)
 - Email string truncation utility (simple enough to leave inline)
+
+---
+
+## ⚠️ Architecture Migration Notice — March 27, 2026
+
+The v3.0 architecture migration (MQTT + captive portal) **supersedes some of the patterns established in this simplification task**:
+
+### What Changes in v3.0
+
+| File | Old Pattern | New Pattern |
+|------|-------------|-------------|
+| `utils/esp32.ts` | `fetchWithTimeout()`, `fetchESP32Data()`, `controlGPIO()` | Replaced by `utils/mqtt.ts` — `connectMQTT()`, `sendGPIOCommand()` |
+| `components/GPSTracker.tsx` | `fetchWithTimeout` polling loop every 3s | MQTT `onData` callback from `connectMQTT()` |
+| `components/FieldMapper.tsx` | Same polling pattern | MQTT subscription |
+| `components/EmergencyStop.tsx` | `emergencyStop()` from `utils/esp32` | `emergencyStop()` from `utils/mqtt` |
+| `hooks/useESP32Connection.ts` | HTTP connection test | MQTT connection state |
+| `components/ESP32ConnectionModal.tsx` | Enter IP / test HTTP | Show QR code setup instructions |
+| `utils/constants.ts` | `GPS_POLL_INTERVAL_MS`, `GPS_REQUEST_TIMEOUT_MS` | `MQTT_BROKER_URL`, `MQTT_TOPIC_DATA`, etc. |
+
+### What Stays the Same
+
+- `hooks/useEscapeKey.ts` — still used in modals ✅
+- `hooks/useClickOutside.ts` — still used in dropdowns ✅
+- `hooks/useAuthProtection.ts` — still used on all protected pages ✅
+- React hook patterns — all remain valid ✅
+- `AbortController` cleanup pattern — replaced by MQTT cleanup `() => client.end()` ✅
+
+### Frontend MQTT Integration Status
+
+- Firmware (ESP32): ✅ Complete
+- `utils/mqtt.ts`: 🔄 Pending implementation
+- `components/GPSTracker.tsx`: 🔄 Pending migration from HTTP to MQTT
+- `components/FieldMapper.tsx`: 🔄 Pending migration
+- `components/EmergencyStop.tsx`: 🔄 Pending migration
+- `components/ESP32ConnectionModal.tsx`: 🔄 Pending UI update
+
+See `COMPLETE_ARCHITECTURE.md` for full v3.0 specification.

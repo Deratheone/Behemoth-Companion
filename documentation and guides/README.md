@@ -2,116 +2,83 @@
 
 Complete technical documentation for the Behemoth Companion agricultural IoT system.
 
+**Version:** 3.0 | **Last Updated:** March 27, 2026
+
 ---
 
 ## 📚 Documentation Files
 
 ### 1. **ESP32_FULL_GUIDE.md** (Complete Technical Specification)
-**Lines:** 900+ | **File Size:** 25K+
 
-Comprehensive guide for implementing the ESP32 firmware with GPIO control. Complete everything-you-need-to-know document.
+Comprehensive firmware implementation guide — everything needed to build and flash the ESP32.
 
 **Contains:**
-- Network setup and WiFi configuration
-- Data structure specification (JSON schema)
-- HTTP endpoint specifications (/data, /gpio)
-- Hardware requirements and wiring diagrams
-- Complete Arduino/PlatformIO code examples
-- GPIO control and emergency stop implementation
-- CORS configuration
+- Architecture overview (MQTT relay vs old HTTP polling)
+- Hardware requirements and pin reference
+- WiFi provisioning (captive portal + QR code setup)
+- MQTT implementation (PubSubClient library)
+- Data structure / JSON payload specification
+- GPIO control and emergency stop
 - GPS module setup (TinyGPS++)
-- Library dependencies
-- Error handling strategies
-- Performance optimization tips
-- Field mapping coordinate system
-- Implementation checklist
-- Testing and debugging procedures
+- HTTP debug endpoints
+- Required libraries + PlatformIO config
+- Serial Monitor debug output reference
+- Full implementation checklist
 
-**Use this when:** Implementing the ESP32 firmware code from scratch or adding GPIO control.
+**Use this when:** Implementing or modifying the ESP32 firmware.
 
 ---
 
-### 2. **ESP32_APP_INTERACTION.md** (Integration & Communication)
-**Lines:** 1,200+ | **File Size:** 45K+
+### 2. **ESP32_APP_INTERACTION.md** (Integration & Communication Guide)
 
-Detailed end-to-end communication flow between ESP32 and web app, including GPIO control. Deep dive into how they interact.
+End-to-end communication flow between ESP32 hardware and the web app. Deep dive into the data path.
 
 **Contains:**
-- Network setup and connection flow
-- Request-response cycles (with millisecond precision)
-- Data flow transformations
-- Complete data flow diagrams
-- HTTP packets and headers (CORS requirements)
-- GPIO control and emergency stop communication
-- Error scenarios and recovery procedures
-- State synchronization in React
-- Real-time behavior examples
-- CORS and browser security
-- Network packet captures (Wireshark view)
-- Timing constraints and specifications
-- Complete lifecycle (startup to disconnect)
-- Authentication and security notes
-- Emergency stop implementation flow
-- Simplified interaction overview
+- Why MQTT replaced HTTP (Mixed Content Policy explanation)
+- Captive portal provisioning flow (step-by-step, with timing)
+- QR code format for WiFi auto-connect
+- MQTT publish/subscribe cycle (with millisecond breakdown)
+- Emergency stop MQTT flow
+- MQTT topic specification
+- Broker configuration (HiveMQ free tier)
+- All error scenarios and recovery flows
+- Old vs new architecture comparison table
+- WiFi reset procedure
+- Captive portal UI details
 
-**Use this when:** Understanding how the ESP32 communicates with the web app, debugging connection issues, implementing GPIO control, or optimizing timing.
+**Use this when:** Debugging connectivity, understanding data flow, or implementing frontend MQTT integration.
 
 ---
 
-### 3. **SIMPLIFICATION_TASK.md** (Code Refactoring Details)
-**Lines:** 146 | **File Size:** 6.0K
+### 3. **SIMPLIFICATION_TASK.md** (Frontend Refactoring Log)
 
-Documentation of code improvements made to the React frontend.
+Documents the March 2026 frontend code cleanup — custom hooks, constants, and performance improvements.
 
 **Contains:**
-- Files created (3 custom hooks, 1 constants file)
-- Files modified (components and pages)
+- 3 custom React hooks created (useEscapeKey, useClickOutside, useAuthProtection)
+- Constants module for magic numbers
 - Performance improvements (95% reduction in localStorage reads)
-- Code quality enhancements
-- Commit information
-- Testing status
-- Architectural decisions
+- Component-level changes summary
+- Commit information and testing status
 
-**Use this when:** Understanding the frontend architecture improvements or reviewing the simplification changes.
+**Use this when:** Understanding the frontend hook architecture or reviewing past refactoring decisions.
 
 ---
 
-## 🎯 Quick Navigation Guide
+## 🎯 Quick Navigation
 
-### **I want to...**
-
-#### ...implement ESP32 firmware
-→ Read **ESP32_FULL_GUIDE.md**
-
-#### ...understand how ESP32 and app communicate
-→ Read **ESP32_APP_INTERACTION.md**
-
-#### ...add emergency stop or GPIO control
-→ See **ESP32_FULL_GUIDE.md** Section 5 (GPIO Control) + **ESP32_APP_INTERACTION.md** Section 14
-
-#### ...debug a connection issue
-→ See **ESP32_APP_INTERACTION.md** Section 6 (Error Scenarios)
-
-#### ...understand the web app architecture
-→ Read **SIMPLIFICATION_TASK.md** + project main README.md
-
-#### ...get a quick overview of everything
-→ Read project main README.md and documentation files headers
-
-#### ...understand the JSON response format
-→ See **ESP32_FULL_GUIDE.md** Section 4 (Data Structure)
-
-#### ...see the complete polling cycle
-→ Read **ESP32_APP_INTERACTION.md** Section 2 (Data Flow)
-
-#### ...understand CORS and browser security
-→ See **ESP32_APP_INTERACTION.md** Section 9 (CORS)
-
-#### ...debug GPS not showing up
-→ See **ESP32_APP_INTERACTION.md** Section 6 (No GPS Lock scenario)
-
-#### ...optimize performance
-→ See **ESP32_APP_INTERACTION.md** Section 12 (Timing Constraints)
+| I want to... | Go to |
+|-------------|-------|
+| Flash the ESP32 firmware | **ESP32_FULL_GUIDE.md** |
+| Understand the MQTT data flow | **ESP32_APP_INTERACTION.md** — Section 2 |
+| Set up captive portal / QR code | **ESP32_FULL_GUIDE.md** — Section 3 |
+| Debug connection issues | **ESP32_APP_INTERACTION.md** — Section 5 |
+| Understand why we moved from HTTP to MQTT | **ESP32_APP_INTERACTION.md** — Section 1 |
+| Find the JSON payload schema | **ESP32_FULL_GUIDE.md** — Section 5 |
+| Implement Emergency Stop | **ESP32_FULL_GUIDE.md** — Section 6 |
+| Install required libraries | **ESP32_FULL_GUIDE.md** — Section 8 |
+| Run MQTT Explorer to verify | **ESP32_FULL_GUIDE.md** — Section 11 |
+| Understand the React hook architecture | **SIMPLIFICATION_TASK.md** |
 
 ---
 
@@ -119,162 +86,148 @@ Documentation of code improvements made to the React frontend.
 
 | Metric | Value |
 |--------|-------|
-| **Total Documentation Lines** | 2,500+ |
-| **Total File Size** | ~85 KB |
-| **Number of Files** | 3 guides + README |
-| **Coverage** | Hardware + Firmware + Software + Integration + GPIO Control |
-| **Last Updated** | March 19, 2026 |
+| **Architecture Version** | 3.0 (MQTT Cloud Relay) |
+| **ESP32 WiFi Mode** | Station (joins user's hotspot) |
+| **Data Protocol** | MQTT 3.1.1 |
+| **Cloud Broker** | broker.hivemq.com (free) |
+| **Provisioning** | QR code + captive portal |
+| **Last Updated** | March 27, 2026 |
 
 ---
 
 ## 🔗 Key Concepts
 
-### Network Architecture (Hotspot Mode)
-- **ESP32 acts as WiFi Access Point** - Creates its own hotspot
-- **SSID:** "Transplanter" | **Password:** "12345678"
-- **IP Address:** 192.168.4.1 (always the same)
-- **User's phone** connects directly to ESP32's hotspot
-- **No additional WiFi infrastructure needed** - Perfect for farms without internet
+### Architecture Overview
 
-### Polling Model
-The app polls ESP32 every **3 seconds** for new GPS/field/health data. No WebSockets or server-push.
-
-### Data Flow
 ```
-GPS Hardware → ESP32 UART → TinyGPS++ → JSON → HTTP Response → React State → Map/UI
+[QR Code] → [Captive Portal] → ESP32 joins user's hotspot
+                                      ↓
+                               Gets internet via mobile data
+                                      ↓ MQTT publish every 3s
+                              [HiveMQ Cloud Broker]
+                                      ↓ wss://
+                              [Vercel HTTPS Web App] ✅
 ```
 
-### Critical Timing
-- **Response Timeout:** 5 seconds max
-- **Polling Interval:** 3 seconds
-- **Network Latency:** 15-80ms typical
-- **Connection Auto-Detect:** 2 seconds polling (up to 30 seconds)
+### Why MQTT (Not HTTP)
 
-### JSON Structure
+The site is on **Vercel HTTPS**. Browsers block HTTP requests from HTTPS pages (**Mixed Content Policy**). CORS headers don't fix this — the browser rejects the request before it even sends. MQTT through a cloud broker eliminates this entirely.
+
+### MQTT Topics
+
+```
+behemoth/v1/sensor/data   ← ESP32 publishes, browser subscribes
+behemoth/v1/control/gpio  ← Browser publishes, ESP32 subscribes
+behemoth/v1/status        ← ESP32 publishes (online/offline)
+```
+
+### Provisioning Flow
+
+1. User scans QR on machine → phone auto-connects to "Transplanter-Setup"
+2. Captive portal opens (dark themed, scanned WiFi list)
+3. User selects their hotspot + enters password
+4. ESP32 saves credentials to flash → reboots → connects to hotspot
+5. User switches WiFi back → opens Behemoth app → data flows
+
+### WiFi Reset
+
+Hold joystick button **3+ seconds on boot** → credentials cleared → provisioning portal re-opens.
+
+### Joystick Boot Actions
+
+| Hold Duration | Action |
+|--------------|--------|
+| Not held | Normal boot (load saved credentials or portal) |
+| < 3 seconds then release | Joystick calibration |
+| ≥ 3 seconds then release | WiFi credentials reset |
+
+### JSON Payload Shape
+
 ```json
 {
   "location": { "lat", "lng", "speed", "altitude", "satellites" },
-  "field": { "plants", "currentRow", "currentCol" },
-  "health": { "detections" },
+  "field":    { "plants": [{"row", "col"}], "currentRow", "currentCol" },
+  "health":   { "detections": [{"row", "col", "status", "confidence"}] },
   "timestamp": milliseconds
 }
-```
-
-### CORS Headers (Required!)
-```
-Access-Control-Allow-Origin: *
-Access-Control-Allow-Methods: GET, POST, OPTIONS
-Access-Control-Allow-Headers: Content-Type
 ```
 
 ---
 
 ## 🛠️ Development Workflow
 
-### Phase 1: Hardware & Firmware
-1. Read **ESP32_FULL_GUIDE.md** Section 2 (Hardware Requirements)
-2. Wire GPS module to ESP32
-3. Follow Arduino code examples in **ESP32_FULL_GUIDE.md**
-4. Configure ESP32 as WiFi Access Point (hotspot):
-   - SSID: **"Transplanter"**
-   - Password: **"12345678"**
-   - IP: **192.168.4.1**
+### Phase 1: Hardware & Libraries
 
-### Phase 2: Testing
-1. Connect phone to "Transplanter" WiFi hotspot
-2. Use cURL to test: `curl -v http://192.168.4.1/data`
-3. Check CORS headers are present
-4. Verify JSON response matches schema
-5. See **ESP32_FULL_GUIDE.md** Section 11 (Testing)
+1. Wire GPS module to ESP32 GPIO 16/17
+2. Wire servo, steppers, sensors, joystick as per pin reference
+3. Install libraries in Arduino IDE:
+   - ESP32Servo
+   - TinyGPS++
+   - ArduinoJson v6.x
+   - **PubSubClient** ← new, required
 
-### Phase 3: Integration
-1. Open the Behemoth Companion website (Vercel HTTPS)
-2. Log in with your credentials
-3. After login, click the **"Connect to Transplanter"** button (top-right, next to your profile)
-4. The connection modal appears
-5. Connect your phone to the "Transplanter" WiFi hotspot:
-   - SSID: "Transplanter"
-   - Password: "12345678"
-6. Return to the app and either:
-   - Click **"I'm Connected"** button (manual verification), OR
-   - Let **auto-detection** run (checks every 2 seconds)
-7. Modal closes automatically when connection succeeds
-8. Dashboard unlocks → Real-time GPS/field/health data flows in
+### Phase 2: Flash & Test Provisioning
 
-### Phase 4: Optimization
-1. Review **ESP32_APP_INTERACTION.md** Section 12 (Timing Constraints)
-2. Adjust GPS_POLL_INTERVAL_MS if needed (in utils/constants.ts)
-3. Monitor network latency and response times
+1. Flash `esp32 code/esp32_firmware.ino`
+2. Open Serial Monitor (115200 baud)
+3. Verify: `">>> Provisioning Portal started"`
+4. Connect phone to "Transplanter-Setup" hotspot
+5. Verify captive portal opens
+6. Enter your phone hotspot details → submit
+7. Verify: `"Saved network found... Connected! IP: ..."`
+8. Verify: `"MQTT → published OK"`
 
----
+### Phase 3: MQTT Verification
 
-## 📝 File Structure in Project
+1. Download MQTT Explorer (mqtt-explorer.com)
+2. Connect to `broker.hivemq.com:1883`
+3. Subscribe to `behemoth/#`
+4. Power on ESP32 with hotspot active
+5. Confirm sensor data messages arriving every 3 seconds
 
-```
-behemoth Combined/
-├── documentation and guides/     ← You are here
-│   ├── README.md                 (This file)
-│   ├── ESP32_FULL_GUIDE.md       (Firmware spec + GPIO control)
-│   ├── ESP32_APP_INTERACTION.md  (Integration guide + emergency stop)
-│   └── SIMPLIFICATION_TASK.md    (Code improvements)
-│
-├── components/                   (React components)
-├── pages/                        (Next.js pages)
-├── utils/                        (Utilities)
-├── hooks/                        (Custom React hooks)
-└── public/                       (Static assets)
-```
+### Phase 4: App Integration
 
----
-
-## 🚀 Quick Start Checklist
-
-- [ ] Read project main README.md for overview
-- [ ] Read ESP32_FULL_GUIDE.md Section 1-3 (Setup, Data Structure, Network)
-- [ ] Setup hardware (ESP32 + GPS module)
-- [ ] Implement Arduino code from ESP32_FULL_GUIDE.md
-- [ ] Test with cURL (both /data and /gpio endpoints)
-- [ ] Connect app to ESP32
-- [ ] Verify GPS data flows through
-- [ ] Test emergency stop functionality
-- [ ] Review ESP32_APP_INTERACTION.md to understand all scenarios
-- [ ] Deploy and monitor
+1. Open `https://behemoth-companion.vercel.app`
+2. Log in
+3. Confirm ESP32 connection indicator turns green (MQTT status)
+4. Navigate to Position page — verify GPS data
+5. Navigate to Field Map — verify plant positions
+6. Press Emergency Stop — verify ESP32 LED (GPIO 2) activates
+7. Check Serial Monitor confirms GPIO command received
 
 ---
 
 ## ⚠️ Important Notes
 
-1. **Security**: Current implementation is testing only. Not suitable for production. Add authentication, HTTPS, and rate limiting before deploying.
+1. **PubSubClient required:** The new firmware won't compile without the PubSubClient library. Install it from Arduino Library Manager before flashing.
 
-2. **GPS Cold Start**: First GPS fix takes 5-10 minutes (cold start). Allow time for satellites to lock before testing.
+2. **Public broker — no privacy:** `broker.hivemq.com` is shared. Any MQTT client that knows your topic names can read data. For a competition demo this is fine. For production deployment, use an authenticated private broker.
 
-3. **CORS is Critical**: Without proper CORS headers, browser will block the request. See **ESP32_APP_INTERACTION.md** Section 9.
+3. **Topic collision:** If multiple Behemoth units run simultaneously on the same broker, they will share the same topics and mix data. To avoid this, customize the topic prefix (e.g., `behemoth/team7/v1/...`) per unit.
 
-4. **WiFi Network**: ESP32 and app must be on the same WiFi network (2.4GHz). Direct internet connection not required.
+4. **GPS cold start:** First GPS fix takes 5–10 minutes outdoors. lat/lng will be `null` until then. Plan for this during field testing.
 
-5. **Response Time**: Responses must arrive within 5 seconds. Longer = timeout and error status.
+5. **MQTT keepalive:** Set to 60 seconds in firmware. If no messages for 60s, broker considers the client offline. The `mqttClient.loop()` call in the main loop handles ping/pong automatically.
+
+6. **HTTP debug server stays active:** After connecting to the hotspot, the ESP32 still serves `/data`, `/gpio`, `/snapshot.jpg` locally. This is useful for direct cURL testing but is not used by the web app.
 
 ---
 
 ## 📞 Troubleshooting
 
-### Issue: Connection fails immediately
-→ Check CORS headers in **ESP32_APP_INTERACTION.md** Section 9
-
-### Issue: GPS shows "Waiting for GPS fix..."
-→ Check Section 6 in **ESP32_APP_INTERACTION.md** (No GPS Lock scenario)
-
-### Issue: Response times > 5 seconds
-→ Check Section 12 in **ESP32_APP_INTERACTION.md** (Timing Constraints)
-
-### Issue: Getting random errors
-→ Read **ESP32_FULL_GUIDE.md** Section 10 (Error Handling)
-
-### Issue: JSON parse error
-→ Verify response format matches **ESP32_FULL_GUIDE.md** Section 4
+| Issue | What to Check |
+|-------|--------------|
+| "Transplanter-Setup" doesn't appear | ESP32 not powered, or has saved credentials — hold joystick 3s to reset |
+| Captive portal doesn't open | Try visiting `http://192.168.4.1` directly in browser |
+| ESP32 can't connect to hotspot | Check SSID/password in portal; hotspot must be 2.4GHz |
+| MQTT not connecting | Check if phone hotspot has internet; broker.hivemq.com reachable? |
+| App shows "Disconnected" | Check MQTT broker is reachable from browser; check browser console |
+| GPIO command not received | Verify ESP32 subscribed — check Serial Monitor "Subscribed to:" line |
+| GPS shows "Waiting" | Normal for first 5–10 minutes outdoors; move to open sky |
+| Wrong data / mixed topics | Multiple ESP32s sharing broker; customize topic prefix |
 
 ---
 
-**Documentation Version:** 1.0
-**Last Updated:** March 19, 2026
-**Status:** Complete and Ready for Implementation ✅
+**Documentation Version:** 3.0
+**Last Updated:** March 27, 2026
+**Status:** Current and accurate for firmware v3.0 ✅

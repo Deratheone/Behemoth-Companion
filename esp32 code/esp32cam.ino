@@ -47,10 +47,12 @@ void setup() {
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_JPEG;
-  config.frame_size = FRAMESIZE_VGA;
-  config.jpeg_quality = 10;
-  config.fb_count = 1;
+  // QVGA (320x240) keeps JPEG size small (~3-6KB) which is critical:
+  // The image travels over UART to the main ESP32, gets base64-encoded
+  // (+33%), then published via MQTT. Smaller = faster transfer, lower
+  // heap usage, and well within HiveMQ's 256MB message size limit.
+  config.frame_size   = FRAMESIZE_QVGA;   // 320x240 (was VGA 640x480)
+  config.jpeg_quality = 12;               // 10=highest quality, 63=lowest
 
   if (esp_camera_init(&config) != ESP_OK) {
     Serial.println("Camera init failed");

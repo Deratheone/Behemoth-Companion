@@ -57,8 +57,8 @@ export default function Home() {
 
         {/* Content Overlay */}
         <div className="relative z-10 min-h-screen flex flex-col">
-        {/* PWA Install Button & Auth */}
-        <div className="fixed top-4 right-4 z-50 flex items-center gap-3">
+        {/* Top-right bar for desktop only */}
+        <div className="hidden sm:flex fixed top-4 right-4 z-50 items-center gap-3">
           {user ? (
             <>
               {!isConnected && (
@@ -69,8 +69,7 @@ export default function Home() {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
-                  <span className="hidden sm:inline">Connect to Transplanter</span>
-                  <span className="sm:hidden">Connect</span>
+                  <span>Connect to Transplanter</span>
                 </button>
               )}
               {isConnected && (
@@ -78,8 +77,7 @@ export default function Home() {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                  <span className="hidden sm:inline">Connected</span>
-                  <span className="sm:hidden">✓</span>
+                  <span>Connected</span>
                 </div>
               )}
               <EmergencyStop />
@@ -97,6 +95,52 @@ export default function Home() {
             </button>
           )}
           <InstallPWA />
+        </div>
+
+        {/* Bottom bar for mobile only */}
+        <div className="sm:hidden fixed bottom-0 left-0 w-full z-50 bg-black/80 backdrop-blur flex items-center justify-between gap-1 py-2 px-1 border-t border-white/10">
+          {user ? (
+            <>
+              {!isConnected && (
+                <button
+                  onClick={() => setShowESP32Modal(true)}
+                  className="flex flex-col items-center justify-center rounded-lg bg-cyan-600 w-12 h-12 text-xs text-white transition-colors hover:bg-cyan-500 shadow-lg"
+                  style={{minWidth:'0',minHeight:'0'}}
+                >
+                  <svg className="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span className="text-[10px]">Connect</span>
+                </button>
+              )}
+              <EmergencyStop className="flex flex-col items-center justify-center rounded-lg w-12 h-12 text-xs px-0 py-0" />
+              <button
+                onClick={handleLogout}
+                className="flex flex-col items-center justify-center rounded-lg bg-green-700 w-12 h-12 text-xs text-white transition-colors hover:bg-green-600 shadow-lg"
+                style={{minWidth:'0',minHeight:'0'}}
+              >
+                <svg className="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12a7 7 0 1114 0 7 7 0 01-14 0zm7-3v6m0 0h.01" />
+                </svg>
+                <span className="text-[10px]">Profile</span>
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setShowAuthModal(true)}
+              className="flex flex-col items-center justify-center rounded-lg bg-green-600 w-12 h-12 text-xs text-white transition-colors hover:bg-green-500 shadow-lg"
+              style={{minWidth:'0',minHeight:'0'}}
+            >
+              <svg className="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+              </svg>
+              <span className="text-[10px]">Login</span>
+            </button>
+          )}
+          {/* InstallPWA icon only */}
+          <div className="flex flex-col items-center justify-center w-12 h-12">
+            <InstallPWA iconOnly />
+          </div>
         </div>
 
         <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 py-6 max-w-3xl mx-auto w-full">

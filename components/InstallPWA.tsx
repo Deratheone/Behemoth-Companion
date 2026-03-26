@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 
+
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
-export default function InstallPWA() {
+export default function InstallPWA({ iconOnly = false }: { iconOnly?: boolean } = {}) {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [installed, setInstalled] = useState(false)
   const [showTip, setShowTip] = useState(false)
@@ -44,10 +45,13 @@ export default function InstallPWA() {
     <>
       <button
         onClick={handleInstallClick}
-        className="flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm text-white transition-colors hover:bg-green-500 shadow-lg"
+        className={iconOnly
+          ? "flex items-center justify-center rounded-lg bg-green-600 w-12 h-12 text-white transition-colors hover:bg-green-500 shadow-lg p-0"
+          : "flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm text-white transition-colors hover:bg-green-500 shadow-lg"
+        }
         aria-label="Install Behemoth Companion"
       >
-        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className={iconOnly ? "h-6 w-6" : "h-5 w-5"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -55,8 +59,7 @@ export default function InstallPWA() {
             d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
           />
         </svg>
-        <span className="hidden sm:inline">Install App</span>
-        <span className="sm:hidden">Install</span>
+        {!iconOnly && <><span className="hidden sm:inline">Install App</span><span className="sm:hidden">Install</span></>}
       </button>
 
       {showTip && (

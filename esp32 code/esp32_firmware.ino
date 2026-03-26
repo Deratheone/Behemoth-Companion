@@ -4,6 +4,9 @@
 #include <WebServer.h>
 #include <ArduinoJson.h>
 #include <TinyGPS++.h>
+#define UART_TX  17
+#define UART_RX  16
+#define CAM_BAUD 115200
 #include <vector>
 #include <DNSServer.h>
 
@@ -69,9 +72,13 @@ DNSServer dnsServer;
 
 // ── GPS ───────────────────────────────────────────────────
 TinyGPSPlus gps;
-HardwareSerial SerialGPS(1); // UART1
+HardwareSerial SerialGPS(1); // UART1 for GPS
 #define RXD2 16
 #define TXD2 17
+
+// ── UART for ESP32-CAM ────────────────────────────────────
+HardwareSerial SerialCam(2); // UART2 for CAM
+
 
 // ── Data State ────────────────────────────────────────────
 // Structures to match the JSON response expected by the website
@@ -184,6 +191,51 @@ String getCardinalDirection(int x, int y) {
 
 // ── Web Server Handlers ──────────────────────────────────
 void addCorsHeaders() {
+
+  void handleSnapshot() {
+    // Request image from ESP32-CAM
+    SerialCam.println("GET_IMAGE");
+    // Wait for image size
+    unsigned long start = millis();
+    while (!SerialCam.available() && millis() - start < 2000) {}
+    if (!SerialCam.available()) {
+      addCorsHeaders();
+      server.send(500, "text/plain", "No response from ESP32-CAM");
+      return;
+    }
+    size_t imgSize = SerialCam.readStringUntil('\n').toInt();
+    if (imgSize == 0) {
+      addCorsHeaders();
+      server.send(500, "text/plain", "Invalid image size");
+      return;
+    }
+    uint8_t *imgBuf = (uint8_t*)malloc(imgSize);
+    if (!imgBuf) {
+      addCorsHeaders();
+      server.send(500, "text/plain", "Memory allocation failed");
+      return;
+    }
+    size_t received = 0;
+    start = millis();
+    while (received < imgSize && millis() - start < 5000) {
+      if (SerialCam.available()) {
+        imgBuf[received++] = SerialCam.read();
+      }
+    }
+    if (received != imgSize) {
+      free(imgBuf);
+      addCorsHeaders();
+      server.send(500, "text/plain", "Image transfer timeout");
+      return;
+    }
+    server.sendHeader("Content-Type", "image/jpeg");
+    server.sendHeader("Content-Length", String(imgSize));
+    addCorsHeaders();
+    server.send(200);
+    WiFiClient client = server.client();
+    client.write(imgBuf, imgSize);
+    free(imgBuf);
+  }
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -278,6 +330,8 @@ void handleOptions() {
 
 // ─────────────────────────────────────────────────────────
 void setup() {
+    // UART for ESP32-CAM
+    SerialCam.begin(CAM_BAUD, SERIAL_8N1, 4, 5); // Example: RX=4, TX=5 (adjust as needed)
   Serial.begin(115200);
 
   // GPS
@@ -331,6 +385,7 @@ void setup() {
   server.on("/gpio", HTTP_GET, handleGpio); // Frontend sends GET
   server.on("/gpio", HTTP_OPTIONS, handleOptions);
   server.on("/data", HTTP_OPTIONS, handleOptions);
+  server.on("/snapshot.jpg", HTTP_GET, handleSnapshot);
   server.begin();
   Serial.println("HTTP server started");
 
